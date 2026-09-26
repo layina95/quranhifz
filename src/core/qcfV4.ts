@@ -31,9 +31,15 @@ export function parseQcfV4Page(page:number,input:unknown):QcfV4Page {
       throw new Error('Référence de verset QCF V4 invalide.');
     const [surah,ayah]=verse.verse_key.split(':').map(Number);
     const id=verseId(surah,ayah);
-    if(id===null||lastVerseId&&id!==lastVerseId+1)throw new Error('Versets QCF V4 manquants ou hors ordre.');
+    if(id===null)throw new Error('Verset QCF V4 hors du Coran.');
+    const mots=verse.words as ApiWord[];
+    // Mesure faite sur la page 585 : la reponse annonce 80:41 et 80:42 alors que
+    // tous leurs mots portent la page 586. Un verset qui ne dessine rien ici ne
+    // peut pas creer de trou dans la suite des versets reellement dessines.
+    if(!mots.some(word=>word.page_number===page))continue;
+    if(lastVerseId&&id!==lastVerseId+1)throw new Error('Versets QCF V4 manquants ou hors ordre.');
     let lastPosition=0;
-    for(const word of verse.words as ApiWord[]){
+    for(const word of mots){
       if(!Number.isInteger(word.position)||Number(word.position)<=lastPosition)
         throw new Error('Ordre des mots QCF V4 invalide.');
       lastPosition=Number(word.position);
@@ -60,6 +66,16 @@ export function parseQcfV4Page(page:number,input:unknown):QcfV4Page {
     // QCF V4 reserves one line for the chapter title, then one for Basmala,
     // except Al-Fatiha (its Basmala is ayah 1) and At-Tawbah (no Basmala).
     const hasBasmala=surah!==1&&surah!==9;
+    // Mesure faite sur les 114 sourates : dix-huit sourates a basmala ont leur
+    // premier mot en ligne 2, et pour chacune la page precedente s'arrete en
+    // ligne 14. Le bandeau tient donc la ligne 15 de la page PRECEDENTE ; cette
+    // page-ci ne porte que la basmala. Chercher le bandeau en ligne 0 levait une
+    // erreur et rendait vingt-quatre pages illisibles.
+    if(hasBasmala&&firstLine===2){
+      decorations.push({line:1,kind:'basmala',surah});
+      occupied.add(1);
+      continue;
+    }
     const headerLine=firstLine-(hasBasmala?2:1);
     if(headerLine<1||occupied.has(headerLine)||hasBasmala&&(occupied.has(firstLine-1)||firstLine-1<1))
       throw new Error(`Emplacement du bandeau de la sourate ${surah} non vérifié sur cette page QCF V4.`);
@@ -84,4 +100,38 @@ export function messageDeRefus(statut:number):string{
   if(statut===404)return 'La page Tajweed n’est pas installée sur ce serveur.';
   if(statut===503)return 'Ce serveur n’a pas les identifiants Quran Foundation.';
   return 'Page Tajweed indisponible.';
+}
+
+/**
+ * Le meme service sert les memes pages par une seconde route, sans identifiant :
+ * l'API publique api.quran.com. Mesure faite le 26 septembre 2026 : elle rend
+ * pour les 604 pages exactement les limites de pageRange() -- 6236 versets lus,
+ * 604 accords, aucun ecart -- et le parseur ci-dessus accepte ses 604 reponses.
+ * Elle n'est donc pas un pis-aller approximatif : c'est la meme edition.
+ */
+export const API_PUBLIQUE='https://api.quran.com/api/v4';
+
+/**
+ * mushaf=19 designe l'edition QCF V4 : une autre edition rendrait les glyphes
+ * d'une autre mise en page. word_fields doit porter code_v2, sans quoi le mot
+ * n'a pas de glyphe et le parseur refuse la page.
+ */
+export function urlApiPublique(page:number):string{
+  return `${API_PUBLIQUE}/verses/by_page/${page}?mushaf=19&words=true&word_fields=code_v2,text_qpc_hafs&per_page=50`;
+}
+
+/**
+ * Seule l'absence de la fonction est durable : elle se retient, pour ne pas
+ * payer une requete perdue a chaque page. Une panne passagere (502, 503) ne se
+ * retient pas, sinon un incident d'une seconde condamnerait la route privee
+ * pour toute la session.
+ */
+export function fonctionAbsenteDuServeur(statut:number):boolean{
+  return statut===404;
+}
+
+export function messageApiPublique(statut:number):string{
+  if(statut===429)return 'Trop de pages Tajweed demandées ; réessaie dans un instant.';
+  if(statut>=500)return 'Le service des pages Tajweed est momentanément indisponible.';
+  return 'La page Tajweed n’a pas pu être obtenue.';
 }

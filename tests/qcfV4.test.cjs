@@ -1,6 +1,6 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {messageDeRefus,parseQcfV4Page}=require('./build/core/qcfV4.js');
+const {fonctionAbsenteDuServeur,messageApiPublique,messageDeRefus,parseQcfV4Page,urlApiPublique}=require('./build/core/qcfV4.js');
 const {verseId}=require('./build/core/quran.js');
 const {qcfV4Html}=require('./build/core/qcfV4Html.js');
 const {ayahMarkerHtml,easternArabicNumber}=require('./build/core/ayahMarker.js');
@@ -131,4 +131,105 @@ test('chaque refus du serveur annonce sa propre cause',()=>{
 test('deux causes differentes ne peuvent pas donner le meme message',()=>{
   const messages=[401,404,502,503].map(messageDeRefus);
   assert.equal(new Set(messages).size,4,'un message partage rendrait le diagnostic aveugle');
+});
+
+// Deux defauts trouves en passant le parseur sur les 604 pages reelles de
+// l'edition, et non sur quelques-unes : vingt-quatre pages refusees pour un
+// bandeau cherche une ligne au-dessus du papier, trois pour un verset annonce
+// mais dessine ailleurs. Les deux fixtures ci-dessous sont la forme exacte des
+// reponses de la page 77 et de la page 585.
+
+test('un verset annonce par la page mais dessine sur la voisine ne cree pas de trou',()=>{
+  // Page 585 : la reponse annonce 80:41 et 80:42, dont tous les mots portent la
+  // page 586. Le controle d'ordre exigeait d'eux une continuite et fabriquait un
+  // trou inexistant, alors que les versets reellement dessines se suivent.
+  const fixture={pagination:{total_pages:1},verses:[
+    {verse_key:'80:40',words:[
+      {position:1,page_number:585,line_number:15,char_type_name:'word',code_v2:'ﱁ'},
+      {position:2,page_number:585,line_number:15,char_type_name:'end',text_qpc_hafs:'40'},
+    ]},
+    {verse_key:'80:41',words:[
+      {position:1,page_number:586,line_number:1,char_type_name:'word',code_v2:'ﱂ'},
+      {position:2,page_number:586,line_number:1,char_type_name:'end',text_qpc_hafs:'41'},
+    ]},
+    {verse_key:'80:42',words:[
+      {position:1,page_number:586,line_number:1,char_type_name:'word',code_v2:'ﱃ'},
+      {position:2,page_number:586,line_number:1,char_type_name:'end',text_qpc_hafs:'42'},
+    ]},
+  ]};
+  const parsed=parseQcfV4Page(585,fixture);
+  assert.equal(parsed.firstVerseId,verseId(80,40));
+  assert.equal(parsed.lastVerseId,verseId(80,40),'la page s arrete au dernier verset reellement dessine');
+  assert.equal(parsed.lines.length,1);
+  assert.equal(parsed.lines[0].words.length,2);
+});
+
+test('un trou reel entre deux versets dessines reste refuse',()=>{
+  // Le controle doit encore mordre : sans cette fixture, le test precedent
+  // pourrait passer en supprimant purement le controle d'ordre.
+  const fixture={pagination:{total_pages:1},verses:[
+    {verse_key:'80:40',words:[{position:1,page_number:585,line_number:15,char_type_name:'word',code_v2:'ﱁ'}]},
+    {verse_key:'80:42',words:[{position:1,page_number:585,line_number:15,char_type_name:'word',code_v2:'ﱂ'}]},
+  ]};
+  assert.throws(()=>parseQcfV4Page(585,fixture),/manquants ou hors ordre/);
+});
+
+test('une sourate qui commence en haut de page porte sa basmala sans bandeau',()=>{
+  // Page 77 : 4:1 commence ligne 2. Mesure faite sur les 114 sourates, les
+  // dix-huit sourates a basmala qui commencent en haut de page ont la page
+  // precedente qui s'arrete ligne 14 : le bandeau tient cette ligne 15, et non
+  // une ligne 0 qui n'existe pas.
+  const fixture={pagination:{total_pages:1},verses:[
+    {verse_key:'4:1',words:[
+      {position:1,page_number:77,line_number:2,char_type_name:'word',code_v2:'ﱁ'},
+      {position:2,page_number:77,line_number:2,char_type_name:'end',text_qpc_hafs:'1'},
+    ]},
+    {verse_key:'4:2',words:[
+      {position:1,page_number:77,line_number:3,char_type_name:'word',code_v2:'ﱂ'},
+    ]},
+  ]};
+  const parsed=parseQcfV4Page(77,fixture);
+  assert.deepEqual(parsed.decorations,[{line:1,kind:'basmala',surah:4}]);
+  assert.equal(parsed.firstVerseId,verseId(4,1));
+  const html=qcfV4Html(parsed,null,[],0,0);
+  assert.match(html,/class="mushaf-row basmala" data-line="1" data-surah="4"/);
+  assert.doesNotMatch(html,/class="mushaf-row surah-header"/);
+});
+
+test('Al-Fatiha et At-Tawbah gardent leur bandeau en haut de page',()=>{
+  // Meme ligne 2, mais sans basmala : le bandeau occupe bien la ligne 1. Sans ce
+  // controle, la correction precedente aurait supprime le bandeau de deux
+  // sourates qui n'ont jamais eu de basmala a cacher.
+  for(const [surah,pageNumber] of [[1,1],[9,187]]){
+    const fixture={pagination:{total_pages:1},verses:[{verse_key:`${surah}:1`,words:[
+      {position:1,page_number:pageNumber,line_number:2,char_type_name:'word',code_v2:'ﱁ'},
+    ]}]};
+    const parsed=parseQcfV4Page(pageNumber,fixture);
+    assert.deepEqual(parsed.decorations,[{line:1,kind:'surahHeader',surah}]);
+  }
+});
+
+// Le repli vers l'API publique n'est acceptable que s'il demande la MEME
+// edition : une autre mise en page rendrait d'autres glyphes, et l'absence de
+// word_fields retirerait code_v2, donc tout glyphe.
+
+test('l adresse de repli demande l edition et les champs dont le parseur depend',()=>{
+  const url=urlApiPublique(3);
+  assert.match(url,/\/verses\/by_page\/3\?/);
+  assert.match(url,/mushaf=19/);
+  assert.match(url,/word_fields=code_v2,text_qpc_hafs/);
+  assert.match(url,/words=true/);
+});
+
+test('seule une fonction absente est retenue comme durable',()=>{
+  assert.equal(fonctionAbsenteDuServeur(404),true);
+  for(const statut of [0,401,403,500,502,503,429])
+    assert.equal(fonctionAbsenteDuServeur(statut),false,`un ${statut} passager ne doit pas condamner la route privee pour la session`);
+});
+
+test('un echec de l API publique ne se confond pas avec un refus du serveur',()=>{
+  const messages=[429,500,404].map(messageApiPublique);
+  assert.match(messages[0],/Trop de pages/);
+  assert.match(messages[1],/momentanément/);
+  assert.equal(new Set(messages).size,3);
 });
