@@ -1,4 +1,4 @@
-import {parseQcfV4Page,QcfV4Page} from '../core/qcfV4';
+import {messageDeRefus,parseQcfV4Page,QcfV4Page} from '../core/qcfV4';
 import {supabase} from './sync';
 
 const cache=new Map<number,{page:QcfV4Page;until:number}>();
@@ -17,7 +17,7 @@ export async function loadQcfV4Page(number:number):Promise<QcfV4Page>{
   const response=await fetch(`${url}/functions/v1/qcf-v4-page?page=${number}`,{
     headers:{authorization:`Bearer ${session.access_token}`,apikey:key},
   });
-  if(!response.ok)throw new Error(response.status===401?'Reconnecte-toi pour charger cette édition Tajweed.':'Page Tajweed indisponible.');
+  if(!response.ok)throw new Error(messageDeRefus(response.status));
   const parsed=parseQcfV4Page(number,await response.json());
   cache.set(number,{page:parsed,until:Date.now()+sixHours});
   return parsed;

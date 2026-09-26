@@ -70,3 +70,18 @@ export function parseQcfV4Page(page:number,input:unknown):QcfV4Page {
   const ordered=[...lines].sort((a,b)=>a[0]-b[0]).map(([number,words])=>({number,words}));
   return {page,lines:ordered,decorations:decorations.sort((a,b)=>a.line-b.line),rowCount,firstVerseId,lastVerseId};
 }
+
+/**
+ * Chaque code du serveur a une cause distincte, et une cause distincte demande
+ * une action distincte. Les confondre ferait chercher une panne de reseau la ou
+ * il manque un deploiement. Mesure faite sur le projet : une fonction absente
+ * repond 404 avec « Requested function was not found », une fonction presente
+ * dont les identifiants Quran Foundation manquent repond 503, et une session
+ * refusee repond 401.
+ */
+export function messageDeRefus(statut:number):string{
+  if(statut===401)return 'Reconnecte-toi pour charger cette édition Tajweed.';
+  if(statut===404)return 'La page Tajweed n’est pas installée sur ce serveur.';
+  if(statut===503)return 'Ce serveur n’a pas les identifiants Quran Foundation.';
+  return 'Page Tajweed indisponible.';
+}

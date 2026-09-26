@@ -1,6 +1,6 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {parseQcfV4Page}=require('./build/core/qcfV4.js');
+const {messageDeRefus,parseQcfV4Page}=require('./build/core/qcfV4.js');
 const {verseId}=require('./build/core/quran.js');
 const {qcfV4Html}=require('./build/core/qcfV4Html.js');
 const {ayahMarkerHtml,easternArabicNumber}=require('./build/core/ayahMarker.js');
@@ -116,4 +116,19 @@ test('une reference numerique hors du domaine Unicode ne produit aucun caractere
     assert.ok(!html.includes('&amp;'),`${code} ne doit pas apparaitre tel quel`);
     assert.ok(html.includes('class="word"'),`${code} doit laisser un mot vide plutot que de casser la page`);
   }
+});
+
+// Les codes de refus ne se confondent pas : une fonction absente et des
+// identifiants manquants demandent deux gestes differents. Mesure faite sur le
+// projet : la fonction absente repond 404, les identifiants manquants 503.
+test('chaque refus du serveur annonce sa propre cause',()=>{
+  assert.match(messageDeRefus(401),/Reconnecte-toi/);
+  assert.match(messageDeRefus(404),/pas installée/);
+  assert.match(messageDeRefus(503),/identifiants Quran Foundation/);
+  assert.match(messageDeRefus(502),/indisponible/);
+});
+
+test('deux causes differentes ne peuvent pas donner le meme message',()=>{
+  const messages=[401,404,502,503].map(messageDeRefus);
+  assert.equal(new Set(messages).size,4,'un message partage rendrait le diagnostic aveugle');
 });
