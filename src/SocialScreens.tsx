@@ -8,6 +8,7 @@ import * as social from './services/social';
 import {setActiveConversation,updatePushPresence} from './services/notifications';
 import {AdminRecitations} from './AdminRecitations';
 import {AdminNotifications} from './AdminNotifications';
+import {AdminDailyContent} from './AdminDailyContent';
 import {signedAudioUrl} from './services/recitations';
 import {FriendAvatar} from './ui/FriendAvatar';
 
@@ -180,6 +181,7 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
 export function AdminScreen({onClose}:{onClose:()=>void}){
   const [recitationMode,setRecitationMode]=useState(false);
   const [notificationMode,setNotificationMode]=useState(false);
+  const [dailyMode,setDailyMode]=useState(false);
   const [reports,setReports]=useState<social.MessageReport[]>([]);
   const [messages,setMessages]=useState<social.ChatMessage[]>([]);
   const [suspensions,setSuspensions]=useState<social.SocialSuspension[]>([]);
@@ -201,10 +203,12 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
   };
   if(recitationMode)return <AdminRecitations onClose={()=>setRecitationMode(false)} />;
   if(notificationMode)return <AdminNotifications onClose={()=>setNotificationMode(false)} />;
+  if(dailyMode)return <AdminDailyContent onClose={()=>setDailyMode(false)} />;
   return <ScrollView contentContainerStyle={{padding:18,paddingBottom:45}}>
     <Button secondary onPress={onClose}>← Profil</Button><Title>Modération</Title>
     <Button onPress={()=>setRecitationMode(true)}>Récitations des élèves</Button>
     <Button secondary onPress={()=>setNotificationMode(true)}>Notifications personnalisées</Button>
+    <Button onPress={()=>setDailyMode(true)}>Rappels &amp; Invocations</Button>
     <Label style={{color:colors.muted}}>Signalements et discussions entre membres. Les actions sont vérifiées par Supabase.</Label>
     {notice?<Card><Label>{notice}</Label></Card>:null}
     <Button secondary onPress={()=>load().catch(e=>setNotice(errorText(e)))}>Actualiser</Button>
