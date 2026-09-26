@@ -8,8 +8,8 @@
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "ios": {"supportsTablet": true, "bundleIdentifier": "fr.coranmemoire.app", "buildNumber": "22"},
-    "android": {"package": "fr.coranmemoire.app", "versionCode": 22, "softwareKeyboardLayoutMode": "resize", "permissions": ["SCHEDULE_EXACT_ALARM"]},
+    "ios": {"supportsTablet": true, "bundleIdentifier": "fr.quranhifz.app", "buildNumber": "22"},
+    "android": {"package": "fr.quranhifz.app", "versionCode": 22, "softwareKeyboardLayoutMode": "resize", "permissions": ["SCHEDULE_EXACT_ALARM"]},
     "extra": {"eas": {"projectId": "07400d61-2179-418c-b872-527c0387c477"}},
     "plugins": ["expo-sqlite", ["expo-notifications", {"defaultChannel": "messages", "color": "#B39559"}], ["expo-audio", {"recordAudioAndroid": true, "microphonePermission": "Autoriser Apprendre le Coran à enregistrer votre récitation pour le suivi de votre apprentissage.", "enableBackgroundPlayback": true}], ["expo-image-picker", {"photosPermission": "Autoriser Apprendre le Coran à choisir une photo de profil pour vos amis.", "cameraPermission": false}]]
   }

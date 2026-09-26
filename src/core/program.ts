@@ -14,7 +14,9 @@ export type PersonalProfile = { sex: 'Homme' | 'Femme'; firstName: string };
 export type AppTheme = 'classic' | 'feminine' | 'lilac' | 'night';
 export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; corrections?: boolean; adminMessages?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
 // `tajweed` is kept as the stored key so existing preferences continue to work.
-export type ReaderPreferences = { mushaf:'traditional'|'tajweed'|'tajweedPages'; followAudio:boolean };
+// Le mode `tajweedPages` (Moushaf Tajweed) a ete retire ; App.tsx ramene toute
+// valeur stockee a `traditional`, pour ne pas perdre une preference existante.
+export type ReaderPreferences = { mushaf:'traditional'|'tajweed'; followAudio:boolean };
 export type ReviewSettings = { enabled:boolean; cycleDays:7|14|21|30; resumedAt?:string };
 export type ReviewGrade = 'perfect'|'hesitant'|'rework';
 export type ReviewEvent = { id:string; date:string; start:number; end:number; category:'recent'|'habitual'|'priority'; grade:ReviewGrade };

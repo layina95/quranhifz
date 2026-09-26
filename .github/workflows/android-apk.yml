@@ -20,20 +20,25 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm test
-      - name: Charger la configuration Firebase privée
+      - name: Charger la configuration Firebase privée (facultative)
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
-          test -n "$GOOGLE_SERVICES_JSON_BASE64" || { echo '::error::Configuration Firebase Android absente'; exit 1; }
+          if [ -z "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            echo "::notice::Aucun secret Firebase : l'APK sera compile sans notifications push Android."
+            exit 0
+          fi
           printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > "$RUNNER_TEMP/google-services.json"
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(!p.client?.some(c=>c.client_info?.android_client_info?.package_name==='fr.coranmemoire.app'))throw Error('Le fichier Firebase ne correspond pas à fr.coranmemoire.app')" "$RUNNER_TEMP/google-services.json"
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(!p.client?.some(c=>c.client_info?.android_client_info?.package_name==='fr.quranhifz.app'))throw Error('Le fichier Firebase ne correspond pas à fr.quranhifz.app')" "$RUNNER_TEMP/google-services.json"
           echo "GOOGLE_SERVICES_JSON_PATH=$RUNNER_TEMP/google-services.json" >> "$GITHUB_ENV"
       - name: Générer le projet natif Android
         run: node node_modules/expo/bin/cli prebuild --platform android --no-install
-      - name: Vérifier Firebase dans le projet natif
+      - name: Vérifier le projet natif Android
         run: |
-          test -s android/app/google-services.json || { echo '::error::Firebase absent de l’APK Android'; exit 1; }
           test -f android/app/build.gradle || exit 1
+          if [ -n "$GOOGLE_SERVICES_JSON_PATH" ]; then
+            test -s android/app/google-services.json || { echo '::error::Firebase absent de l’APK Android'; exit 1; }
+          fi
       - name: Compiler l’APK autonome
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
