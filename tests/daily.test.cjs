@@ -317,6 +317,24 @@ test('l envoi aux familles part de l espace Rappels, et il est manuel',()=>{
   assert.ok(/Rien n’est programmé/.test(admin),'l ecran ne dit pas que rien n est programme');
 });
 
+test('aucun test ne lit un fichier hors du depot',()=>{
+  // Une suite doit tourner sur un depot clone seul. C'est arrive : une assertion
+  // lisait l'installation assemblee, posee a la racine du dossier de travail et
+  // non versionnee. Verte sur la machine qui l'a ecrite, rouge en integration
+  // continue, avec un ENOENT qui n'a rien a voir avec le code mesure.
+  const {readdirSync}=require('node:fs');
+  const dossier=chemin.join(racine,'tests');
+  const coupables=[];
+  for(const nom of readdirSync(dossier).filter(n=>n.endsWith('.test.cjs'))){
+    const source=readFileSync(chemin.join(dossier,nom),'utf8');
+    for(const trouve of source.matchAll(/lire\('([^']+)'\)/g)){
+      const cible=chemin.resolve(racine,trouve[1]);
+      if(cible!==racine&&!cible.startsWith(racine+chemin.sep))coupables.push(`${nom} lit ${trouve[1]}`);
+    }
+  }
+  assert.deepEqual(coupables,[],`lecture hors du depot : ${coupables.join(', ')}`);
+});
+
 test('la migration demande a PostgREST de relire le schema',()=>{
   // Incident reel : la migration etait appliquee, la colonne existait, et la
   // premiere ecriture a quand meme ete refusee. PostgREST garde en memoire la
@@ -325,7 +343,10 @@ test('la migration demande a PostgREST de relire le schema',()=>{
   // refus incomprehensible pour une colonne qui est bien la.
   const sql=lire('supabase/daily-content.sql');
   assert.ok(/notify pgrst, 'reload schema';/.test(sql),'la migration ne force pas la relecture du schema par PostgREST');
-  // Et l installation en un seul collage doit le porter aussi, sinon la fenetre
-  // se rouvre pour celle et celui qui suivent le guide.
-  assert.ok(/notify pgrst, 'reload schema';/.test(lire('../installation-complete.sql')),'l installation assemblee ne force pas la relecture');
+  // On ne verifie PAS l'installation assemblee ici : ce fichier vit a la racine du
+  // dossier de travail, hors du depot. La suite doit tourner sur un depot clone
+  // seul — une assertion sur un chemin d'a cote passait ici et echouait en
+  // integration continue, pour une raison qui n'avait rien a voir avec le code.
+  // L'assemblage est de toute facon controle la ou il est fabrique, qui exige que
+  // chaque fichier se retrouve intact dans le resultat.
 });
