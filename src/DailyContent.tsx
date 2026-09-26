@@ -117,15 +117,17 @@ export function HomeDailyCard({onOpen}:{onOpen:(kind:DailyKind)=>void}){
     return()=>{vivant=false;};
   },[]);
   const content=rows?.find(row=>row.kind===kind)??null;
-  return <Card>
-    <View style={{flexDirection:'row',alignItems:'center',gap:8}}>
+  return <>
+    <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:10}}>
       <View style={{flexDirection:'row',gap:7,flex:1}}>{dailyKinds.map(value=><Pill key={value} label={dailyKindTab[value]} active={kind===value} onPress={()=>setKind(value)} />)}</View>
       <Pressable accessibilityRole="button" accessibilityLabel="Ouvrir Rappels et Invocations" onPress={()=>onOpen(kind)}><Label style={{fontSize:12,color:colors.green,fontWeight:'700'}}>Tout voir</Label></Pressable>
     </View>
-    {rows===null?<Skeleton lines={4} />:content?<DailyContentCard content={content} audio={audio} badge={content.planned?'Aujourd’hui':undefined} />:<Label style={{color:colors.muted,marginTop:12}}>{dailyKindEmpty[kind]}</Label>}
-    {audio.error?<Label style={{color:colors.red,fontSize:12,marginTop:6}}>{audio.error}</Label>:null}
-    {error?<Label style={{color:colors.red,fontSize:12,marginTop:6}}>{error}</Label>:null}
-  </Card>;
+    {/* Les pastilles sont posees a cote de la carte, pas dedans : une carte dans
+        une carte donnerait un double cadre du meme ton, qui se lit comme une
+        erreur d'affichage. */}
+    {rows===null?<Card><Skeleton lines={4} /></Card>:content?<DailyContentCard content={content} audio={audio} badge={content.planned?'Aujourd’hui':undefined} />:<Card><Label style={{color:colors.muted}}>{dailyKindEmpty[kind]}</Label></Card>}
+    {audio.error||error?<Card><Label style={{color:colors.red,fontSize:12}}>{audio.error||error}</Label></Card>:null}
+  </>;
 }
 
 /** Une pastille d'onglet. Le fond vient du theme, jamais d'une couleur ecrite ici. */
