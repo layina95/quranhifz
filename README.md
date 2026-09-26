@@ -49,14 +49,14 @@ pnpm test
 pnpm start
 ```
 
-Ouvrir l’application dans Expo Go sur iPhone ou Android pour une première inspection. Pour les constructions natives, utiliser EAS Build.
+Ouvrir l’application dans Expo Go sur iPhone ou Android pour une première inspection. Pour des binaires installables, les flux de `.github/workflows/` produisent un APK Android et un IPA iOS non signé, sans passer par EAS.
 
 ## Synchronisation privée
 
-1. Utiliser le projet Supabase `npbwnvrqmajwqtnncuyv`.
+1. Créer **votre propre** projet Supabase. Le projet `npbwnvrqmajwqtnncuyv` appartient au dépôt d’origine : ne l’utilisez pas.
 2. Dans **SQL Editor**, exécuter `supabase/schema.sql`. La table `user_state` est protégée par Row Level Security et chaque utilisateur ne peut accéder qu’à sa propre ligne.
 3. Copier `.env.example` vers `.env`, puis renseigner l’URL du projet et la **clé publique publishable/anon**. Ne jamais utiliser la clé `service_role` dans l’application.
-4. Pour les compilations EAS, ajouter ces mêmes variables publiques à l’environnement EAS du projet. La sauvegarde locale fonctionne même sans Supabase.
+4. Pour les binaires compilés par GitHub Actions, ajouter ces mêmes valeurs aux **Variables** du dépôt — `SUPABASE_URL` et `SUPABASE_PUBLISHABLE_KEY`, dans *Settings → Secrets and variables → Actions → Variables*. La sauvegarde locale fonctionne même sans Supabase.
 
 Pour activer les amis et la modération, exécuter ensuite `supabase/social.sql` dans **SQL Editor**. Le script crée les tables et fonctions avec RLS. Il ne donne accès à aucun compte administrateur à lui seul. Dans un second passage du SQL Editor, attribuer le rôle avec :
 
@@ -92,7 +92,7 @@ Le workflow **Actions → APK Android autonome → Run workflow** compile aussi 
 
 ### Notifications push : configuration native
 
-- Le projet Expo de cette application est `@scichiker/coran-memoire` (ID EAS `07400d61-2179-418c-b872-527c0387c477`). L’ancien projet Expo `Scichiker` est distinct.
+- L’identifiant du projet Expo **n’est plus écrit dans le dépôt** : il vient de la variable d’environnement `EXPO_PUBLIC_EXPO_PROJECT_ID`, alimentée par la variable GitHub `EXPO_PROJECT_ID`. Tant qu’elle est absente, l’application se compile et fonctionne, mais refuse de s’enregistrer pour les notifications, avec le message « Projet Expo manquant pour les notifications push. » — au lieu d’enregistrer les jetons de vos utilisateurs dans le projet d’un tiers. Créer **votre** projet Expo et renseigner cette variable avant d’activer les notifications.
 - Pour Android, l’application Firebase `fr.quranhifz.app` se trouve dans le projet Firebase `coran-memoire`. Le workflow APK lit `FIREBASE_GOOGLE_SERVICES_JSON_BASE64` depuis les secrets GitHub, le décode dans le runner et le relie à la configuration Expo par `app.config.js`. Le fichier local `google-services.json` est ignoré par Git.
 - La clé de compte de service Firebase FCM V1 a été enregistrée dans les **credentials Android** du projet Expo. Elle et la clé de signature Android se trouvent dans les identifiants privés d’Expo. Une sauvegarde locale est conservée hors du dépôt public.
 - Sur iPhone, l’IPA est compilée sans signature. Pour recevoir des push distants après signature dans eSign, le certificat et le profil Apple doivent être valides pour `fr.quranhifz.app`, inclure la capacité Push Notifications et produire un droit `aps-environment` cohérent. Une clé APNs doit être configurée dans les credentials iOS d’Expo. Le 24 septembre 2026, les réponses du service Expo indiquaient explicitement `Could not find APNs credentials for fr.quranhifz.app` ; les push iOS ne peuvent donc pas encore parvenir aux appareils.

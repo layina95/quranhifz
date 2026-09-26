@@ -4,6 +4,8 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    env:
+      EXPO_PUBLIC_EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
