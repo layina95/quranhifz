@@ -1948,5 +1948,5 @@ notify pgrst, 'reload schema';
 -- =====================================================================
 --  Fin. Controle : dans une nouvelle requete, executez
 --    select count(*) from pg_tables where schemaname = 'public';
---  Attendu : 24.
+--  Attendu : 25.
 -- =====================================================================

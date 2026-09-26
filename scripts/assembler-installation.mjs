@@ -37,6 +37,18 @@ export const ORDRE = [
 ];
 
 /**
+ * Ce que l'installation produit une fois appliquee, sur une base neuve.
+ *
+ * Sert au pied du fichier engendre ET au banc qui verifie l'assemblage : une
+ * seule valeur, donc plus de « Attendu : 24 » qui survit a l'ajout d'une table.
+ * Le banc ne se contente pas de la relire — il compare ces nombres a ceux d'une
+ * execution fichier par fichier, pour que la valeur ecrite soit confrontee a la
+ * mesure et pas seulement a elle-meme.
+ */
+export const TABLES_ATTENDUES = 25;
+export const POLITIQUES_ATTENDUES = 66;
+
+/**
  * La source d'un script, ramenee a des fins de ligne LF.
  *
  * Sans cette normalisation, le fichier engendre depend de l'etat de la copie de
@@ -89,7 +101,7 @@ export function assembler() {
     `-- =====================================================================\n` +
       `--  Fin. Controle : dans une nouvelle requete, executez\n` +
       `--    select count(*) from pg_tables where schemaname = 'public';\n` +
-      `--  Attendu : 24.\n` +
+      `--  Attendu : ${TABLES_ATTENDUES}.\n` +
       `-- =====================================================================\n`,
   );
 
