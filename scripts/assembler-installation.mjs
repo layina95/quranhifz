@@ -1,0 +1,107 @@
+/**
+ * Assemble les douze scripts SQL du dossier supabase/ en un seul fichier, dans
+ * l'ordre qui a ete eprouve sur une base neuve. Le but : remplacer douze
+ * collages manuels par un seul, pour une personne qui decouvre l'outil.
+ *
+ * Usage : node scripts/assembler-installation.mjs [sortie]
+ *
+ * Le fichier de sortie est versionne, et un test verifie qu'il correspond bien
+ * aux sources. C'est ce qui manquait : l'assembleur vivait hors du depot, donc
+ * le fichier que la personne colle etait le seul livrable que rien ne
+ * controlait. Il est reste en retard sur supabase/daily-content.sql sans que
+ * rien ne le signale.
+ */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const RACINE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DOSSIER = join(RACINE, 'supabase');
+const SORTIE = resolve(RACINE, process.argv[2] ?? 'installation-complete.sql');
+
+export const ORDRE = [
+  'schema.sql',
+  'social.sql',
+  'notifications.sql',
+  'social-v2.sql',
+  'friend-avatars.sql',
+  'friend-realtime.sql',
+  'fix-social-push.sql',
+  'recitations.sql',
+  'notification-corrections.sql',
+  'recitation-sharing.sql',
+  'admin-notifications.sql',
+  'daily-content.sql',
+];
+
+export function assembler() {
+  const entete = `-- =====================================================================
+--  Installation complete de la base, en un seul collage
+-- =====================================================================
+--
+--  Ce fichier reunit les ${ORDRE.length} scripts du dossier supabase/, dans l'ordre
+--  verifie. Collez-le en entier dans le SQL Editor de Supabase, puis Run.
+--
+--  L'ordre a ete eprouve sur une base PostgreSQL neuve : les ${ORDRE.length} scripts
+--  s'appliquent sans erreur, et la sequence se rejoue telle quelle. Un
+--  message « already exists » est donc sans gravite si vous relancez.
+--
+--  Ne collez pas ce fichier deux fois en meme temps dans deux onglets.
+--
+--  Fichier engendre : ne le modifiez pas a la main, modifiez supabase/, puis
+--  relancez « node scripts/assembler-installation.mjs ».
+--
+-- =====================================================================
+
+`;
+
+  const morceaux = [entete];
+
+  ORDRE.forEach((nom, index) => {
+    const brut = readFileSync(join(DOSSIER, nom), 'utf8').replace(/^\uFEFF/, '');
+    const numero = String(index + 1).padStart(2, '0');
+    morceaux.push(
+      `-- =====================================================================\n` +
+        `--  ${numero}/${ORDRE.length}   ${nom}\n` +
+        `-- =====================================================================\n\n` +
+        brut.trimEnd() +
+        '\n\n',
+    );
+  });
+
+  morceaux.push(
+    `-- =====================================================================\n` +
+      `--  Fin. Controle : dans une nouvelle requete, executez\n` +
+      `--    select count(*) from pg_tables where schemaname = 'public';\n` +
+      `--  Attendu : 24.\n` +
+      `-- =====================================================================\n`,
+  );
+
+  return morceaux.join('');
+}
+
+export function fichiersAbsents(contenu) {
+  const manquants = [];
+  for (const nom of ORDRE) {
+    const brut = readFileSync(join(DOSSIER, nom), 'utf8').replace(/^\uFEFF/, '').trimEnd();
+    if (!contenu.includes(brut)) manquants.push(nom);
+  }
+  return manquants;
+}
+
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('assembler-installation.mjs')) {
+  const contenu = assembler();
+  writeFileSync(SORTIE, contenu, 'utf8');
+
+  console.log(`Ecrit : ${SORTIE}`);
+  console.log(`Octets : ${Buffer.byteLength(contenu, 'utf8')}`);
+  console.log(`Fichiers reunis : ${ORDRE.length}`);
+  ORDRE.forEach((nom, index) => console.log(`  ${String(index + 1).padStart(2, '0')} ${nom}`));
+
+  const manquants = fichiersAbsents(contenu);
+  if (manquants.length > 0) {
+    console.error(`[ECHEC] ${manquants.length} fichier(s) non retrouve(s) intact(s) : ${manquants.join(', ')}`);
+    process.exit(1);
+  }
+  console.log(`Controle : les ${ORDRE.length} fichiers sont retrouves intacts dans le resultat.`);
+}

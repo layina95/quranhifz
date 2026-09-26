@@ -343,10 +343,41 @@ test('la migration demande a PostgREST de relire le schema',()=>{
   // refus incomprehensible pour une colonne qui est bien la.
   const sql=lire('supabase/daily-content.sql');
   assert.ok(/notify pgrst, 'reload schema';/.test(sql),'la migration ne force pas la relecture du schema par PostgREST');
-  // On ne verifie PAS l'installation assemblee ici : ce fichier vit a la racine du
-  // dossier de travail, hors du depot. La suite doit tourner sur un depot clone
-  // seul — une assertion sur un chemin d'a cote passait ici et echouait en
-  // integration continue, pour une raison qui n'avait rien a voir avec le code.
-  // L'assemblage est de toute facon controle la ou il est fabrique, qui exige que
-  // chaque fichier se retrouve intact dans le resultat.
+  // Et l'installation en un seul collage doit le porter aussi, sinon la fenetre
+  // se rouvre pour celle et celui qui suivent le guide. Ce fichier vit
+  // desormais DANS le depot, produit par scripts/assembler-installation.mjs :
+  // c'est ce qui permet de le controler ici, sur un depot clone seul.
+  assert.ok(/notify pgrst, 'reload schema';/.test(lire('installation-complete.sql')),'l installation assemblee ne force pas la relecture');
 });
+
+test('l installation assemblee est a jour avec les sources',()=>{
+  // L'assembleur vivait hors du depot : le fichier que la personne colle etait
+  // le seul livrable que rien ne controlait. Il est reste en retard sur
+  // supabase/daily-content.sql sans que rien ne le signale, et la panne est
+  // arrivee chez la personne qui installait.
+  //
+  // Le controle ne compare pas des empreintes figees, qui vieilliraient : il
+  // REGENERE l'assemblage avec l'assembleur du depot, et exige que le fichier
+  // versionne soit identique octet pour octet. Une source modifiee sans
+  // reassemblage fait donc rougir ce test.
+  const {execFileSync}=require('node:child_process');
+  const {mkdtempSync,rmSync}=require('node:fs');
+  const os=require('node:os');
+
+  const dossier=chemin.join(racine,'scripts');
+  const {ORDRE}=require(chemin.join(dossier,'assembler-installation.mjs'));
+  assert.ok(ORDRE.length>=12,'l assembleur ne connait pas les douze scripts');
+
+  const temporaire=mkdtempSync(chemin.join(os.tmpdir(),'assemblage-'));
+  const sortie=chemin.join(temporaire,'assemble.sql');
+  try{
+    execFileSync(process.execPath,[chemin.join(dossier,'assembler-installation.mjs'),sortie],{stdio:'pipe'});
+    const attendu=readFileSync(sortie,'utf8');
+    const versionne=lire('installation-complete.sql');
+    assert.equal(versionne,attendu,
+      'installation-complete.sql n est pas a jour : relancer node scripts/assembler-installation.mjs');
+  }finally{
+    rmSync(temporaire,{recursive:true,force:true});
+  }
+});
+
