@@ -372,8 +372,15 @@ test('l installation assemblee est a jour avec les sources',()=>{
   const sortie=chemin.join(temporaire,'assemble.sql');
   try{
     execFileSync(process.execPath,[chemin.join(dossier,'assembler-installation.mjs'),sortie],{stdio:'pipe'});
-    const attendu=readFileSync(sortie,'utf8');
-    const versionne=lire('installation-complete.sql');
+    // On compare le CONTENU, pas les fins de ligne : celles de la copie de
+    // travail ne dependent que du reglage git de la machine (mesure : sur un
+    // clone neuf Windows, git extrait tout en CRLF, et l assembleur ecrit des
+    // entetes en LF). Comparer des octets bruts rendait ce controle vert en
+    // integration continue et rouge sur un poste, ce qui n'apprend rien sur
+    // l'assemblage lui-meme.
+    const normaliser=texte=>texte.replace(/\r\n/g,'\n');
+    const attendu=normaliser(readFileSync(sortie,'utf8'));
+    const versionne=normaliser(lire('installation-complete.sql'));
     assert.equal(versionne,attendu,
       'installation-complete.sql n est pas a jour : relancer node scripts/assembler-installation.mjs');
   }finally{

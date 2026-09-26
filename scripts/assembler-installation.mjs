@@ -34,6 +34,20 @@ export const ORDRE = [
   'daily-content.sql',
 ];
 
+/**
+ * La source d'un script, ramenee a des fins de ligne LF.
+ *
+ * Sans cette normalisation, le fichier engendre depend de l'etat de la copie de
+ * travail : sur un poste Windows ou git extrait en CRLF, les scripts sortent en
+ * CRLF et les entetes ecrites ici en LF, donc l'assemblage est MIXTE. Le meme
+ * generateur produirait alors deux fichiers differents selon la machine, et un
+ * controle par comparaison d'octets serait vert en integration continue et
+ * rouge sur un poste — mesure : 71 verts sur 72 sur un clone neuf Windows.
+ */
+function lireSource(nom) {
+  return readFileSync(join(DOSSIER, nom), 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+}
+
 export function assembler() {
   const entete = `-- =====================================================================
 --  Installation complete de la base, en un seul collage
@@ -58,7 +72,7 @@ export function assembler() {
   const morceaux = [entete];
 
   ORDRE.forEach((nom, index) => {
-    const brut = readFileSync(join(DOSSIER, nom), 'utf8').replace(/^\uFEFF/, '');
+    const brut = lireSource(nom);
     const numero = String(index + 1).padStart(2, '0');
     morceaux.push(
       `-- =====================================================================\n` +
@@ -83,7 +97,7 @@ export function assembler() {
 export function fichiersAbsents(contenu) {
   const manquants = [];
   for (const nom of ORDRE) {
-    const brut = readFileSync(join(DOSSIER, nom), 'utf8').replace(/^\uFEFF/, '').trimEnd();
+    const brut = lireSource(nom).trimEnd();
     if (!contenu.includes(brut)) manquants.push(nom);
   }
   return manquants;
