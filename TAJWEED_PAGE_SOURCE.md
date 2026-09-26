@@ -151,56 +151,84 @@ chaque manque est effectivement annoncé par cette voisine.
 
 ### Où le livre pose chaque ligne
 
-Mesure faite en lisant l'étendue de l'encre de chaque ligne sur les pages
-imprimées 7, 528, 586 et 604 (`_inspect/pages-imprimees/etendue-lignes.py`) :
+Mesure faite en lisant l'étendue de l'encre de chaque bande sur les **23 pages
+imprimées de page entière** dont on dispose
+(`_inspect/pages-imprimees/poser-les-lignes-courtes.py`) : les bandes tombent soit
+à **96,4-100,0 %** de la colonne (274 bandes), soit à **2,7-72,7 %** (23 bandes).
+La zone 73-96 % est **entièrement vide** : le livre ne laisse jamais une ligne
+entre les deux.
 
-- **le livre remplit ses lignes d'un bord à l'autre** : 100 % de la colonne sur
-  les quinze lignes de la page 7, et sur les lignes 3, 7, 8, 12, 13 de la page
-  604 ;
-- **une ligne qui termine une sourate reste courte et se pose contre le bord
-  droit** : 62,6 % sur la page 528, 59,3 % et 54,1 % sur la page 604 ;
+- **les lignes courtes sont CENTRÉES** : les 23 le sont, **0 est posée au bord
+  droit, 0 au bord gauche** ;
+- **une fin de sourate n'est pas courte pour autant** : la page 350 n'a qu'une
+  bande centrée, la basmala, et ses lignes 7, 10, 13 et 15 — à 96,5 %, 92,7 %,
+  98,7 % et 93,2 % de la colonne — sont imprimées pleines à 100 % ;
 - **la page 1 fait exception** : Al-Fatiha y est centrée dans son médaillon.
 
-Le lecteur pose donc chaque ligne selon sa largeur mesurée : justifiée si elle
-occupe au moins 80 % de la ligne la plus large de la page, posée au bord droit
-sinon, et centrée sur la page 1. Le seuil de 80 % sépare nettement les deux
-populations mesurées — une ligne pleine occupe au moins 93 % de la colonne, une
-ligne courte au plus 73 % — et il attrape le cas de la page 604 dont la ligne 14
-porte 114:5 seule, courte à 72,7 % sans terminer de sourate, pour garder le
-dernier verset du Coran sur sa propre ligne.
+Le lecteur pose donc chaque ligne selon sa largeur mesurée : **remplie** si elle
+occupe au moins 80 % de la colonne, **centrée à sa largeur naturelle** sinon, et
+centrée d'emblée sur la page 1. Le seuil de 80 % tombe dans la zone vide mesurée
+— la plus longue ligne courte du livre fait 72,7 %, la plus courte ligne pleine
+96,4 % — donc aucune ligne réelle n'approche la frontière.
 
-Une ligne est reconnue comme fin de sourate quand elle porte le **médaillon** du
-dernier verset d'une sourate. Le médaillon et non le dernier mot : un verset peut
-tenir sur deux lignes, et compter les versets dont le dernier mot tombe sur la
-ligne en désignait **216 au lieu de 114** — la page 604 marquait sa ligne 14, qui
-porte 114:5, comme une fin de sourate. Mesure faite sur les 604 pages : les
-**114 médaillons** de fin de sourate sont sur la même ligne que le dernier mot de
-leur verset, aucun désaccord.
+La pose ne dépend **que de la largeur** : la règle est une fonction pure qui ne
+reçoit que des nombres, embarquée dans la page par `poseDeLigne.toString()`, si
+bien que le téléphone et le banc d'essai font tourner le même texte. Une fin de
+sourate ne peut donc plus décider d'une pose — c'est ce qui produisait la
+différence signalée sur la page 599.
 
-Pendant la recherche de la taille, les lignes sont reposées à leur largeur
-**naturelle** : une ligne justifiée remplit toujours sa rangée et ne dirait donc
-plus rien de la place que le texte demande.
+### Comment le livre remplit une ligne
 
-### La taille du texte, mesurée et non choisie
+Il la **met à l'échelle d'un seul tenant** ; il ne joue pas sur les espaces.
+Mesure faite mot à mot (`_inspect/tajweed2/mot-a-mot-imprime.py`), en comparant la
+largeur de chaque mot imprimé à la mise à l'échelle uniforme de la ligne et à ce
+qu'un simple resserrement des espaces prédirait :
 
-Les avances réelles des 604 polices ont été décodées hors ligne
-(`_inspect/tajweed2/`). Elles montrent que **chaque page a sa propre échelle** :
-les quinze lignes de la page 7 totalisent 16,2 à 17,4 em, celles de la page 549
-15,1 em, celles de la page 1 de 5,9 à 13,3 em. C'est donc la ligne la plus large
-**de la page** qui donne sa taille, et non une taille unique pour tout le livre.
-Sur un écran de 390 px, cette ligne demande **28,00 px** pour la page 1
-(13,3456 em, ligne 4, la page la plus étroite) et **16,77 px** pour la page 414,
-ligne 3 (22,2856 em, la ligne la plus large du livre) ; sur un écran de 320 px,
-**13,76 px** au minimum.
+| mot | avance | mise à l'échelle | espaces resserrés | imprimé |
+|---|---|---|---|---|
+| page 414, ligne 3, pos. 24 | 3,8116 em | **76,5 px** | 93,9 px | **78 px** |
+| page 604, ligne 3, pos. 2 | 2,5180 em | **70,3 px** | — | **71 px** |
 
-L'ancien plancher valait `max(19, 88 % du plafond)` = **25 px** : **602 pages sur
-604 ne pouvaient pas tenir**, et affichaient « la ligne X ne tient pas » à la
-place de la page. Le plancher est maintenant une taille de lecture fixe de
-**12 px**, et le plafond suit la largeur de l'écran :
-`min(32, ⌈largeur × 0,074⌉, hauteur de rangée / 1,45)`. Le coefficient 0,074 est
-mesuré : la page la plus étroite demande `0,958 / 13,3456 em = 0,07178` fois la
-largeur, soit **3,09 % de marge**, et aucune page n'est refusée de 320 à 430 px de
-large — la page la plus large y demande 13,76 px, au-dessus du plancher de 12.
+C'est ce qui décide du rendu : `transform: scaleX(colonne / largeur naturelle)`,
+origine au bord droit. Sur les **8 820 lignes de mots** des 604 pages, **8 547
+(96,9 %)** demandent plus que la colonne et sont condensées, 256 (2,9 %) sont
+étirées, et 17 (0,2 %) seulement restent courtes et centrées.
+
+La plus forte compression réelle du livre est la ligne 3 de la page 414 :
+**22,2856 em pour 15,0 em, soit 0,6731** ; les suivantes sont 0,7014 (page 417) et
+0,7116 (page 341). Le lecteur signale une ligne au-delà de **0,65**, soit 3,4 %
+sous ce minimum : une page du livre ne peut pas déclencher l'alerte, une ligne
+réellement mal composée le peut.
+
+### La taille du texte : la proportion du livre
+
+Le livre ne change pas de taille d'une page à l'autre. **La colonne vaut 15,0 em**,
+et c'est cette proportion-là, non la largeur de l'écran, qui décide de la lettre :
+`0,719 / 15,0 = 0,047933` fois la largeur de la page — le même chiffre que
+`29,8 / 622 = 0,047910` mesuré sur le scan. Sur une page de 390 px : lettre de
+**18,69 px/em**, colonne de **280,4 px = 15,000 em**, pas des rangées de 1,81 em,
+marges latérales 0,1405 et verticales 0,0884, page au format 622 × 917.
+
+Les 29,8 px/em sont établis par trois voies indépendantes :
+
+- le **médaillon**, ornement isolé dont la boîte en police est `0,8656 × 1,1336 em`
+  et qui mesure `26 × 34 px` dans le scan ;
+- les **quatre lignes courtes de la page 604**, libres de toute compression, qui
+  donnent 29,74 à 29,88 : leur encre imprimée colle à la somme des avances —
+  8,8988 em = 265,2 px contre 265 px imprimés, 10,8964 em = 324,7 contre 325,
+  8,1000 em = 241,4 contre 242 ;
+- les **hauteurs de bandes** comparées aux boîtes d'encre des mêmes lignes dans la
+  police (médiane 29,2 sur la page 414, 30,3 sur la page 604), robustes au seuil
+  d'encre : les hauteurs ne bougent pas de plus de 2 px entre les seuils 80 et 200.
+
+L'ancienne loi cherchait, page par page, la taille qui fasse tenir la ligne la plus
+large — `min(32, ⌈largeur × 0,074⌉, hauteur de rangée / 1,45)`, plancher 12 px,
+colonne de 0,958 de l'écran. Elle était fausse en principe, et c'est elle qui
+produisait les deux messages signalés : « cette page ne correspond pas encore aux
+limites du moushaf existant » et « la ligne X ne tient pas sans réduire le texte ».
+Elle rendait le texte **plus grand que le livre** sur la plupart des pages — sur un
+écran de 390 px, 28,00 px/em pour la page 1, 21,55 pour la page 599, contre 18,69
+pour la proportion du livre — ce qui est la « police trop grande » signalée.
 
 
 Chaque mot porte l'identifiant du verset Hafs : le surlignage pendant l'audio et

@@ -9,22 +9,123 @@ function glyph(code:string){return code.replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi
 });}
 
 /**
- * La ligne porte-t-elle le médaillon du dernier verset d'une sourate ?
+ * Les cotes de la page imprimee, mesurees sur le scan du Moushaf (622 x 917 px
+ * pour une page) :
  *
- * Mesure faite sur les pages imprimees 7, 528, 586 et 604, en lisant l'etendue de
- * l'encre de chaque ligne (sonde _inspect/pages-imprimees/etendue-lignes.py) : le
- * livre REMPLIT ses lignes d'un bord a l'autre -- 100 % de la colonne sur les
- * quinze lignes de la page 7 -- et laisse courtes celles qui terminent une
- * sourate, posees contre le bord DROIT : 62,6 % sur la page 528, 59,3 % et 54,1 %
- * sur la page 604.
+ *   - la colonne de texte va de x=87 a x=533, soit 447 px, et de y=55 a y=863,
+ *     soit 808 px pour quinze rangees ;
+ *   - le pas des rangees vaut 54,0 px (mediane des ecarts entre bandes sur les
+ *     pages 414 et 604, mesure au seuil 140 comme au seuil 80 : les hauteurs de
+ *     bandes ne bougent pas de plus de 2 px entre ces deux seuils, donc ce n'est
+ *     pas du flou de scan) ;
+ *   - la lettre du livre vaut 29,8 px par em, etabli par trois voies
+ *     independantes : le medaillon, dont la boite en police est 0,8656 x 1,1336
+ *     em et qui mesure 26 x 34 px dans le scan (rapport 0,765 contre 0,764) ;
+ *     les quatre lignes courtes de la page 604, qui donnent toutes 29,74 a 29,88 ;
+ *     et les hauteurs de bandes comparees aux boites d'encre des memes lignes
+ *     dans la police (mediane 29,2 sur la page 414, 30,3 sur la page 604).
  *
- * Le medaillon, et non le dernier mot, parce qu'un verset peut tenir sur deux
- * lignes : compter les versets dont le dernier mot est sur la ligne en designait
- * 216 au lieu de 114, et la page 604 marquait sa ligne 14 -- qui porte 114:5 --
- * comme une fin de sourate. Mesure faite sur les 604 pages : les 114 medaillons
- * de fin de sourate sont sur la meme ligne que le dernier mot de leur verset,
- * donc les deux regles s'accordent quand elles sont justes, et seule celle-ci ne
- * se trompe jamais.
+ * D'ou deux constantes qui gouvernent tout le reste : la colonne vaut 15,0 em
+ * (447 / 29,8), et le pas vaut 1,81 em (54,0 / 29,8).
+ */
+export const PAGE_RATIO = 622 / 917;
+export const MARGE_LATERALE = 0.1405;
+export const MARGE_VERTICALE = 0.0884;
+export const COLONNE_EM = 15.0;
+export const PAS_EM = 1.81;
+
+/**
+ * La largeur de la lettre, en part de la largeur de la page : la colonne vaut
+ * 0,719 de la page (1 - 2 x 0,1405) et 15,0 em, donc la lettre vaut
+ * 0,719 / 15,0 = 0,047933 -- le meme chiffre que 29,8 / 622 = 0,047910, mesure
+ * sur le scan. Sur une page de 390 px cela donne une lettre de 18,69 px/em et
+ * une colonne de 280,4 px = 15,000 em, exactement la proportion du livre.
+ *
+ * Le livre ne change pas de taille d'une page a l'autre : c'est cette
+ * proportion fixe qui remplace l'ancienne recherche, page par page, d'une taille
+ * qui fasse tenir la ligne la plus large. Une page dont une ligne demande plus de
+ * 15,0 em n'est pas ecrite plus petit -- le livre la COMPRIME (voir
+ * COMPRESSION_MINIMALE).
+ */
+export const TAILLE_PAGE = (1 - 2 * MARGE_LATERALE) / COLONNE_EM;
+
+/**
+ * En deca de cette part de la colonne, le livre ne remplit pas la ligne : il la
+ * centre, a sa largeur naturelle. Au-dela, il la remplit.
+ *
+ * Mesure faite sur les 23 pages imprimees de page entiere dont on dispose
+ * (sonde _inspect/pages-imprimees/poser-les-lignes-courtes.py) : les bandes
+ * imprimees tombent soit a 96,4-100,0 % de la colonne (274 bandes), soit a
+ * 2,7-72,7 % (23 bandes, toutes CENTREES : 0 au bord droit, 0 au bord gauche).
+ * La zone 73-96 % est ENTIEREMENT VIDE : le livre ne laisse jamais une ligne
+ * entre les deux.
+ *
+ * La frontiere est donc quelque part entre 72,7 % et 92,7 %, et la mesure ne la
+ * serre pas davantage : 0,8 s'y place. Elle est au moins eprouvee par le bas --
+ * la ligne 10 de la page 350, qui ne fait que 92,7 % de la colonne, est imprimee
+ * a 100 %, donc le livre l'ETIRE ; et par le haut -- la ligne 15 de la page 604,
+ * qui fait 54,0 %, est imprimee a 54,1 %, donc le livre la laisse naturelle.
+ */
+export const PART_REMPLIE = 0.8;
+
+/**
+ * Le garde-fou contre une ligne qui ne pourrait pas tenir : la plus forte
+ * compression REELLE du livre est celle de la ligne 3 de la page 414, 22,2856 em
+ * pour une colonne de 15,0 em, soit 0,6731 (mesure faite sur les 8 820 lignes de
+ * mots des 604 pages : c'est le minimum, les suivantes sont 0,7014 page 417 et
+ * 0,7116 page 341). Le garde-fou est pose a 0,65, soit 3,4 % sous ce minimum,
+ * pour qu'aucune page legitime ne puisse declencher une alerte a cause d'un
+ * ecart de mesure, tout en attrapant une ligne reellement mal composee -- qui
+ * demanderait, elle, bien davantage.
+ */
+export const COMPRESSION_MINIMALE = 0.65;
+
+export type PoseDeLigne={justify:'flex-start'|'center';facteur:number;depasse:boolean};
+
+/**
+ * Comment le livre pose une ligne, connaissant sa largeur NATURELLE et la
+ * largeur de la colonne. C'est la seule regle de pose de tout le moteur, et elle
+ * ne recoit QUE des largeurs : aucune fin de sourate, aucun numero de ligne,
+ * aucune page. C'est ce qui rend impossible le retour de la regle refutee -- le
+ * livre ne pose pas ses lignes courtes contre le bord droit, il les centre
+ * (23 lignes courtes sur 23 pages imprimees, 23 centrees, 0 au bord).
+ *
+ *   - la ligne occupe au moins PART_REMPLIE de la colonne : le livre la REMPLIT,
+ *     c'est-a-dire qu'il l'etire ou la condense d'un seul tenant, posee a droite
+ *     (flex-start en direction rtl). Ce n'est pas un jeu d'espaces : mesure faite
+ *     mot a mot, la largeur de chaque mot imprime suit la mise a l'echelle
+ *     uniforme (page 414 ligne 3, mot de 3,8116 em : 76,5 px mis a l'echelle
+ *     contre 78 px imprimes, alors qu'un simple resserrement des espaces en
+ *     predirait 93,9 ; page 604 ligne 3, mot de 2,5180 em : 70,3 contre 71) ;
+ *   - elle reste nettement plus courte : il la centre, a sa largeur naturelle
+ *     (page 604 ligne 15 : 8,1000 em, soit 241,4 px a 29,8 px/em, contre 242 px
+ *     imprimes) ;
+ *   - si la compression necessaire depasse COMPRESSION_MINIMALE, la ligne est
+ *     signalee : c'est le seul cas ou la page ne peut pas etre fidele.
+ *
+ * La fonction est embarquee telle quelle dans la page par poseDeLigne.toString():
+ * le telephone et le banc d'essai font donc tourner le MEME texte, et non deux
+ * copies qui peuvent diverger.
+ */
+export function poseDeLigne(naturelle:number,colonne:number,partRemplie:number,compressionMinimale:number):PoseDeLigne{
+  if(naturelle<colonne*partRemplie)return {justify:'center',facteur:1,depasse:false};
+  const rapport=colonne/naturelle;
+  if(rapport<compressionMinimale)return {justify:'flex-start',facteur:compressionMinimale,depasse:true};
+  return {justify:'flex-start',facteur:rapport,depasse:false};
+}
+
+/**
+ * La ligne porte-t-elle le medaillon du dernier verset d'une sourate ?
+ *
+ * Mesure faite sur les 604 pages : les 114 medaillons de fin de sourate sont sur
+ * la meme ligne que le dernier mot de leur verset. Ce n'est PLUS ce qui decide de
+ * la pose : le livre pose ses lignes d'apres leur largeur, et la mesure l'a
+ * montre -- les lignes courtes qu'il centre comprennent aussi bien des fins de
+ * sourate (page 604, 114:5 a 72,7 %) que la basmala (62,6 %). La fonction reste
+ * parce qu'elle dit une chose vraie du livre -- seule la sonde
+ * _inspect/sonde/page-unique.mjs s'en sert encore, pour afficher la pose de
+ * chaque ligne -- mais elle ne gouverne plus le rendu : poseDeLigne() ne recoit
+ * que des largeurs, donc aucune fin de sourate ne peut plus decider d'une pose.
  */
 export function estFinDeSourate(mots:QcfV4Word[]):boolean{
   return mots.some(mot=>{
@@ -35,18 +136,15 @@ export function estFinDeSourate(mots:QcfV4Word[]):boolean{
 }
 
 /**
- * Ou poser une ligne dans la largeur de la page, avant que la mise en page ne
- * mesure les largeurs reelles. La page 1 fait exception : Al-Fatiha y est
- * centree dans son medaillon.
- *
- * Ce n'est qu'une premiere pose : fitPage() reprend l'alignement de chaque ligne
- * sur sa largeur mesuree, parce qu'une ligne peut rester courte sans terminer de
- * sourate -- la page 604 en donne le cas, sa ligne 14 porte 114:5 seule a 72,7 %
- * de la colonne pour garder le dernier verset du Coran sur sa propre ligne.
+ * Ou poser une ligne AVANT que la mise en page ne mesure les largeurs reelles.
+ * Toutes les lignes partent justifiees, sauf la page 1, ou Al-Fatiha est centree
+ * dans son medaillon. fitPage() reprend ensuite chaque ligne sur sa largeur
+ * mesuree, en appliquant la regle du livre : remplie d'un seul tenant si elle
+ * occupe au moins PART_REMPLIE de la colonne, centree a sa largeur naturelle
+ * sinon.
  */
-export function alignementDeLigne(page:number,mots:QcfV4Word[]):string{
-  if(page===1)return 'center';
-  return estFinDeSourate(mots)?'flex-start':'space-between';
+export function alignementDeLigne(page:number):string{
+  return page===1?'center':'space-between';
 }
 
 /**
@@ -55,21 +153,23 @@ export function alignementDeLigne(page:number,mots:QcfV4Word[]):string{
  *
  * La page est dessinee nue, sans cadre : c'est ainsi que la lecture de reference
  * la presente, et un cadre ne retrecissait la zone de texte sans rien apporter
- * que la page imprimee ne porte pas deja.
+ * que la page imprimee ne porte pas deja. En revanche elle garde la FORME de la
+ * page imprimee (622 x 917) et ses marges, parce que c'est ce qui place les
+ * versets : la colonne du livre vaut 15,0 em, et c'est cette proportion-la, et
+ * non la largeur de l'ecran, qui decide de la taille de la lettre.
  */
 export function qcfV4Html(data:QcfV4Page,playingVerseId:number|null,difficultyIds:number[],sessionStart:number,sessionEnd:number){
   const font=`https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p${data.page}.woff2`;
   const lines=data.lines.map(line=>{
-    const fin=estFinDeSourate(line.words);
     const fixe=data.page===1;
-    return `<div class="mushaf-row line" data-line="${line.number}" data-fin="${fin?1:0}"${fixe?' data-fixe="1"':''} style="grid-row:${line.number};justify-content:${alignementDeLigne(data.page,line.words)}">${line.words.map(word=>{
+    return `<div class="mushaf-row line" data-line="${line.number}"${fixe?' data-fixe="1"':''} style="grid-row:${line.number};justify-content:${alignementDeLigne(data.page)}">${line.words.map(word=>{
       const classes=['word',word.kind==='end'?'end':'',word.verseId===playingVerseId?'playing':'',difficultyIds.includes(word.verseId)?'difficult':'',word.verseId>=sessionStart&&word.verseId<=sessionEnd?'session':''].filter(Boolean).join(' ');
       const content=word.kind==='end'?ayahMarkerHtml(word.verseKey):escapeHtml(glyph(word.glyph));
       return `<span class="${classes}" data-verse="${word.verseId}" data-verse-key="${escapeHtml(word.verseKey)}">${content}</span>`;
     }).join('')}</div>`;
   }).join('');
   const decorations=data.decorations.map(item=>{
-    if(item.kind==='basmala')return `<div class="mushaf-row basmala" data-line="${item.line}" data-surah="${item.surah}" style="grid-row:${item.line}">${escapeHtml(verses[0].text)}</div>`;
+    if(item.kind==='basmala')return `<div class="mushaf-row basmala" data-line="${item.line}" data-surah="${item.surah}" style="grid-row:${item.line}"><span class="basmala-texte">${escapeHtml(verses[0].text)}</span></div>`;
     const name=surahs[item.surah-1]?.arabic;
     if(!name)throw new Error('Nom de sourate introuvable.');
     return `<div class="mushaf-row surah-header" data-line="${item.line}" data-surah="${item.surah}" style="grid-row:${item.line}"><span class="header-flourish" aria-hidden="true">✦</span><span class="header-name">سُورَةُ ${escapeHtml(name)}</span><span class="header-flourish" aria-hidden="true">✦</span></div>`;
@@ -77,10 +177,10 @@ export function qcfV4Html(data:QcfV4Page,playingVerseId:number|null,difficultyId
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta charset="utf-8"><style>
 @font-face{font-family:qcf;src:url('${font}') format('woff2');font-display:block}
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fffdf7;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-#page{height:100%;width:100%;padding:2.2% 2.1%;display:grid;grid-template-rows:repeat(${data.rowCount},minmax(0,1fr));align-items:center;overflow:hidden;--word-size:18px}
+html{display:flex;align-items:center;justify-content:center}
+#page{--page-w:100vw;--page-h:calc(100vw*${PAGE_RATIO.toFixed(4)});width:var(--page-w);height:var(--page-h);padding:calc(var(--page-w)*${MARGE_VERTICALE}) calc(var(--page-w)*${MARGE_LATERALE});display:grid;grid-template-rows:repeat(${data.rowCount},minmax(0,1fr));align-items:center;overflow:visible;--word-size:calc(var(--page-w)*${TAILLE_PAGE.toFixed(6)})}
 .mushaf-row{grid-column:1;min-width:0;min-height:0;max-width:100%;width:100%;align-self:stretch}
-.line{display:flex;align-items:center;white-space:nowrap;direction:rtl;gap:0;font-family:qcf;font-size:var(--word-size);line-height:1.45;overflow:visible}
-#page.mesure .line{justify-content:flex-start!important}
+.line{display:flex;align-items:center;white-space:nowrap;direction:rtl;gap:0;font-family:qcf;font-size:var(--word-size);line-height:1.45;overflow:visible;transform-origin:right center}
 .word{display:inline-block;position:relative;border-radius:4px;flex-shrink:0;white-space:nowrap}
 .word.playing{background:rgba(194,90,132,.20);box-shadow:inset 0 -2px 0 rgba(171,59,106,.7)}
 .word.difficult{background:rgba(225,67,67,.19)}.word.session:not(.playing):not(.difficult){background:rgba(207,178,104,.07)}
@@ -92,6 +192,7 @@ export function qcfV4Html(data:QcfV4Page,playingVerseId:number|null,difficultyId
 .header-name{font-family:"Noto Naskh Arabic","Geeza Pro",serif;font-size:calc(var(--word-size)*.72);font-weight:700;line-height:1.25;text-align:center}
 .header-flourish{font-family:serif;font-size:calc(var(--word-size)*.55);color:#9d7840;line-height:1}
 .basmala{display:flex;align-items:center;justify-content:center;direction:rtl;white-space:nowrap;font-family:"Noto Naskh Arabic","Geeza Pro",serif;font-size:calc(var(--word-size)*.84);line-height:1.45;color:#27231e}
+.basmala-texte{display:inline-block;transform-origin:center center}
 </style></head><body><main id="page">${lines}${decorations}</main><script>
 const bridge=window.ReactNativeWebView;let timer=null,startX=0,startY=0,held=false;
 function emit(value){bridge&&bridge.postMessage(JSON.stringify(value))}
@@ -100,58 +201,52 @@ document.addEventListener('touchmove',e=>{const p=e.touches[0];if(Math.abs(p.cli
 document.addEventListener('touchend',()=>{clearTimeout(timer);if(!held)emit({type:'tap'})},{passive:true});
 document.addEventListener('contextmenu',e=>e.preventDefault());
 function setPlaying(id){document.querySelectorAll('.playing').forEach(w=>w.classList.remove('playing'));if(id!==null)document.querySelectorAll('[data-verse="'+id+'"]').forEach(w=>w.classList.add('playing'))}
+// La regle de pose du livre, embarquee telle quelle : le telephone et le banc
+// d'essai font tourner le meme texte, et non deux copies qui peuvent diverger.
+const poseDeLigne=${poseDeLigne.toString()};
 function fitPage(){
-  const page=document.getElementById('page'),rows=[...document.querySelectorAll('.mushaf-row')],lines=[...document.querySelectorAll('.line')];
-  // La hauteur utile se compte hors des marges : le style donne a #page une
-  // marge verticale de 2,2 % de la largeur, qui n'est pas de la place de texte.
-  const marge=innerWidth*0.022;
-  const slotHeight=(page.clientHeight-2*marge)/${data.rowCount};
-  // Mesure des 604 pages, avances reelles de chaque police (sonde
-  // _inspect/tajweed2/analyser-mesures.mjs) : chaque page a sa propre echelle --
-  // les lignes de la page 7 font 16,2 a 17,4 em, celles de la page 549 15,1 --
-  // donc c'est la ligne la plus large DE LA PAGE qui donne sa taille. Sur 390 px,
-  // elle demande 28,00 px pour la page 1 (13,3456 em, ligne 4) et 16,77 px pour
-  // la page 414, ligne 3 (22,2856 em, la plus large du livre) ; sur 320 px,
-  // 13,76 px au minimum. Le plafond suit donc la largeur -- 0,074 laisse 3,09 %
-  // au-dessus du 0,07178 qu'exige la page la plus etroite -- et le plancher est
-  // une taille de lecture fixe, surtout pas un pourcentage du plafond : a 88 %
-  // du plafond il valait 25 px, et 602 pages sur 604 ne pouvaient pas tenir, ce
-  // qui affichait « la ligne X ne tient pas » a la place de la page.
-  const plafond=Math.floor(Math.min(32,Math.ceil(innerWidth*.074),slotHeight/1.45));
-  const PLANCHER=12;
-  // Pendant la recherche, chaque ligne est posee a sa largeur NATURELLE : une
-  // ligne justifiee remplit toujours sa rangee, donc elle ne dirait plus rien de
-  // la place que le texte demande, et la taille cherchee deviendrait celle qui
-  // fait tenir la hauteur, sans limite de largeur.
-  page.classList.add('mesure');
-  let taille=0;
-  for(let size=plafond;size>=PLANCHER;size--){
-    page.style.setProperty('--word-size',size+'px');
-    const bad=rows.find(row=>row.scrollWidth>row.clientWidth+2||row.scrollHeight>row.clientHeight+3);
-    const outside=lines.find(line=>[...line.children].some(word=>{const w=word.getBoundingClientRect(),r=line.getBoundingClientRect();return w.left<r.left-2||w.right>r.right+2||w.top<r.top-2||w.bottom>r.bottom+2}));
-    if(!bad&&!outside&&document.documentElement.scrollHeight<=innerHeight+2){taille=size;break;}
-  }
-  if(taille){
-    // L'alignement se pose maintenant, sur les largeurs REELLES : la ligne la
-    // plus large donne la largeur de la colonne du livre. Mesure faite sur les
-    // pages imprimees 7, 528, 586 et 604, une ligne pleine occupe au moins 93 %
-    // de la colonne et une ligne courte au plus 73 %. Le seuil de 80 % separe les
-    // deux, et il attrape la ligne 14 de la page 604, courte a 72,7 % sans
-    // terminer de sourate.
-    const largeurs=lines.map(line=>line.scrollWidth);
-    const colonne=Math.max(1,...largeurs);
-    lines.forEach((line,index)=>{
-      if(line.dataset.fixe)return;
-      line.style.justifyContent=line.dataset.fin==='1'||largeurs[index]<colonne*0.8?'flex-start':'space-between';
-    });
-    page.classList.remove('mesure');
-    return true;
-  }
-  page.classList.remove('mesure');
-  const bad=rows.find(row=>row.scrollWidth>row.clientWidth+2||row.scrollHeight>row.clientHeight+3);
-  console.warn('QCF V4 : page ${data.page} dépasse la zone de lecture même a '+PLANCHER+' px, ligne '+(bad?.dataset.line??'?'));
-  emit({type:'layout-error',line:Number(bad?.dataset.line??0)});
-  return false;
+  const page=document.getElementById('page'),lines=[...document.querySelectorAll('.line')];
+  // 1. La page prend la FORME de la page imprimee (622 x 917), au plus grand qui
+  //    tient dans la vue. Tout le reste en decoule : la taille de la lettre est
+  //    0,04793 fois la largeur de la page, donc la colonne fait toujours 15,0 em,
+  //    comme dans le livre.
+  const largeur=Math.min(innerWidth,innerHeight/${PAGE_RATIO.toFixed(6)});
+  page.style.setProperty('--page-w',largeur+'px');
+  page.style.setProperty('--page-h',(largeur*${PAGE_RATIO.toFixed(6)})+'px');
+  const colonne=largeur*(1-2*${MARGE_LATERALE});
+  // 2. On repart des poses nues : mesurer une ligne deja comprimee donnerait la
+  //    largeur d'apres transformation, et deux passages de suite comprimeraient
+  //    deux fois.
+  lines.forEach(line=>{line.style.transform='';line.style.justifyContent=line.dataset.fixe?'center':'space-between';});
+  // 3. La largeur NATURELLE de chaque ligne : la somme des mots, et non
+  //    scrollWidth, qui rend la largeur de la rangee des que le contenu est plus
+  //    court qu'elle.
+  const largeurs=lines.map(line=>[...line.children].reduce((somme,mot)=>somme+mot.getBoundingClientRect().width,0));
+  // 4. La pose de chaque ligne, comme le livre la pose : remplie d'un seul
+  //    tenant si elle occupe au moins PART_REMPLIE de la colonne, centree a sa
+  //    largeur naturelle sinon. Le livre REMPLIT ses lignes en les etirant ou en
+  //    les condensant, et non en jouant sur les espaces : sur les 8 820 lignes de
+  //    mots des 604 pages, 96,9 % demandent plus que la colonne et sont
+  //    condensees, 2,9 % demandent entre 80 et 100 % et sont etirees (la ligne 10
+  //    de la page 350, a 92,7 %, est imprimee a 100 %), et 0,2 % seulement
+  //    restent courtes et centrees. La regle elle-meme est poseDeLigne(),
+  //    embarquee ci-dessus telle quelle.
+  let debordement=null;
+  lines.forEach((line,index)=>{
+    if(line.dataset.fixe)return;
+    const pose=poseDeLigne(largeurs[index],colonne,${PART_REMPLIE},${COMPRESSION_MINIMALE});
+    if(pose.depasse)debordement=line;
+    line.style.transform=pose.facteur===1?'':'scaleX('+pose.facteur.toFixed(4)+')';
+    line.style.justifyContent=pose.justify;
+  });
+  // 5. La basmala du livre est etiree par un tatouil : 62,6 % de la colonne pour
+  //    1,21 em de haut. Elle est ecrite ici dans une autre police, qui ne peut
+  //    pas rendre cet aspect ; on la ramene au moins a la largeur de la colonne
+  //    quand elle la depasse, pour qu'elle ne sorte jamais de la page.
+  const basmala=document.querySelector('.basmala-texte');
+  if(basmala){basmala.style.transform='';const naturelle=basmala.getBoundingClientRect().width;if(naturelle>colonne)basmala.style.transform='scaleX('+(colonne/naturelle).toFixed(4)+')';}
+  if(debordement){emit({type:'layout-error',line:Number(debordement.dataset.line??0)});return false;}
+  return true;
 }
 document.fonts.load('24px qcf').then(()=>{requestAnimationFrame(()=>{if(fitPage())emit({type:'ready'})})}).catch(()=>emit({type:'font-error'}));
 window.addEventListener('resize',()=>requestAnimationFrame(fitPage));

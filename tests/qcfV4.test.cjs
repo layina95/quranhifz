@@ -2,7 +2,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const {fonctionAbsenteDuServeur,messageApiPublique,messageDeRefus,ouvertureDeSourate,parseQcfV4Page,reunirReponses,urlApiPublique}=require('./build/core/qcfV4.js');
 const {pageRange,verseId}=require('./build/core/quran.js');
-const {qcfV4Html}=require('./build/core/qcfV4Html.js');
+const {qcfV4Html,poseDeLigne,PART_REMPLIE,COMPRESSION_MINIMALE,TAILLE_PAGE,COLONNE_EM,MARGE_LATERALE,PAGE_RATIO}=require('./build/core/qcfV4Html.js');
 const {ayahMarkerHtml,easternArabicNumber}=require('./build/core/ayahMarker.js');
 
 const page={pagination:{total_pages:1},verses:[
@@ -71,10 +71,14 @@ test('la page 603 réserve trois bandeaux et trois Basmala aux changements de so
   assert.match(html,/grid-template-rows:repeat\(15,minmax\(0,1fr\)\)/);
   assert.match(html,/class="mushaf-row surah-header" data-line="6" data-surah="110" style="grid-row:6"/);
   assert.match(html,/class="mushaf-row basmala" data-line="7" data-surah="110" style="grid-row:7"/);
-  assert.match(html,/class="mushaf-row line" data-line="8" data-fin="0" style="grid-row:8;justify-content:space-between"/);
-  // La ligne 10 porte 110:3, dernier verset de sa sourate : c'est la seule de ce
-  // groupe a rester courte, et le livre la pose contre le bord droit.
-  assert.match(html,/class="mushaf-row line" data-line="10" data-fin="1" style="grid-row:10;justify-content:flex-start"/);
+  assert.match(html,/class="mushaf-row line" data-line="8" style="grid-row:8;justify-content:space-between"/);
+  // La ligne 10 porte 110:3, dernier verset de sa sourate. Ce n'est PLUS ce qui
+  // decide de sa pose : la page sort toutes ses lignes justifiees, et c'est
+  // fitPage() qui les repose ensuite sur leur largeur mesuree. La ligne 10 de la
+  // page 603 mesure 13,2 em pour une colonne de 15,0 em, donc 88 % : elle sera
+  // remplie, comme le livre la remplit.
+  assert.match(html,/class="mushaf-row line" data-line="10" style="grid-row:10;justify-content:space-between"/);
+  assert.equal((html.match(/data-fin/g)||[]).length,0,'la fin de sourate ne doit plus marquer la ligne : la pose ne depend que des largeurs');
   assert.equal((html.match(/class="mushaf-row basmala"/g)||[]).length,3);
   assert.equal((html.match(/class="word end/g)||[]).length,14);
 });
@@ -342,49 +346,73 @@ test('un bandeau sans ligne libre est refuse plutot que superpose',()=>{
   assert.throws(()=>parseQcfV4Page(584,occupee,{sourateSuivante:{surah:80,ligne:2}}),/non vérifié/);
 });
 
-// La taille du texte est choisie par mesure, pas a l'oeil. Sonde
-// _inspect/tajweed2/lignes-604.mjs, avances reelles des 604 polices : chaque page
-// a sa propre echelle, donc c'est la ligne la plus large DE LA PAGE qui donne sa
-// taille. Sur 390 px elle demande 28,00 px pour la page 1 (13,3456 em, ligne 4)
-// et 16,77 px pour la page 414, ligne 3 (22,2856 em, la plus large du livre) ;
-// sur 320 px, 13,76 px au minimum. La page la plus etroite demande
-// 0,958/13,3456 = 0,07178 fois la largeur de l'ecran, et le code retient 0,074,
-// soit 3,09 % de marge.
+// La taille du texte n'est plus choisie page par page : elle est la PROPORTION
+// du livre, et elle seule. Mesure faite sur le scan du Moushaf : la colonne de
+// texte va de x=87 a x=533, soit 447 px, et la lettre vaut 29,8 px/em -- etabli
+// par trois voies independantes (le medaillon, 26 x 34 px pour une boite de
+// 0,8656 x 1,1336 em ; les quatre lignes courtes de la page 604, 29,74 a 29,88 ;
+// les hauteurs de bandes contre les boites d'encre des memes lignes, 29,2 et
+// 30,3). D'ou une colonne de 447/29,8 = 15,0 em, et une lettre de
+// 0,719/15,0 = 0,047933 fois la largeur de la page -- le meme chiffre que
+// 29,8/622 = 0,047910.
+//
+// L'ancienne loi cherchait, page par page, la taille qui fasse tenir la ligne la
+// plus large. Elle etait fausse en principe : sur les 8 820 lignes de mots des
+// 604 pages, 96,9 % demandent PLUS que la colonne, et le livre ne les ecrit pas
+// plus petit -- il les comprime.
 
-test('le plancher de taille laisse tenir la page la plus dense',()=>{
-  const html=qcfV4Html(parseQcfV4Page(3,page),null,[],0,0);
-  const plancher=Number(/const PLANCHER=(\d+)/.exec(html)?.[1]);
-  assert.ok(Number.isFinite(plancher),'le plancher doit etre une constante lisible');
-  assert.ok(plancher<=13.8,`un plancher de ${plancher} px refuserait la page 414, qui demande 13,8 px sur un ecran de 320 px`);
-  // Le plafond ne doit pas se deduire du plancher : a 88 % du plafond le plancher
-  // valait 25 px, et 602 pages sur 604 ne pouvaient pas tenir.
-  assert.doesNotMatch(html,/Math\.max\(19/);
+test('la lettre est la proportion du livre, et non une taille par page',()=>{
+  assert.equal(COLONNE_EM,15.0);
+  assert.ok(Math.abs(TAILLE_PAGE-(1-2*MARGE_LATERALE)/15.0)<1e-12);
+  // 29,8/622 = 0,047910 ; le code retient 0,047933, soit 0,05 % d'ecart.
+  assert.ok(Math.abs(TAILLE_PAGE-29.8/622)<0.0001,`la lettre vaut ${TAILLE_PAGE} de la page, le scan dit ${29.8/622}`);
+  assert.ok(Math.abs(PAGE_RATIO-622/917)<1e-12);
 });
 
-test('le plafond de taille laisse la page la plus large remplir la largeur',()=>{
-  const html=qcfV4Html(parseQcfV4Page(3,page),null,[],0,0);
-  const plafond=/Math\.min\((\d+),Math\.ceil\(innerWidth\*([\d.]+)\)/.exec(html);
-  assert.ok(plafond,'le plafond doit suivre la largeur de l ecran');
-  assert.ok(Number(plafond[2])>=0.074,`un plafond de ${plafond[2]} fois la largeur ne laisserait pas la page 1 remplir ses lignes`);
+test('la meme proportion est emise pour toutes les pages',()=>{
+  // C'est ce qui distingue le modele du livre de l'ancien : la page 1 (la plus
+  // etroite du livre, 13,3456 em sur sa ligne 4) et la page 414 (la plus large,
+  // 22,2856 em sur sa ligne 3) doivent recevoir la MEME taille de lettre.
+  const tailles=[1,3,414,604].map(n=>{
+    const html=qcfV4Html(parseQcfV4Page(n,{pagination:{total_pages:1},verses:[{verse_key:'2:6',words:[
+      {position:1,page_number:n,line_number:1,char_type_name:'word',code_v2:'\uFC41'},
+    ]}]}),null,[],0,0);
+    return /--word-size:calc\(var\(--page-w\)\*([\d.]+)\)/.exec(html)?.[1];
+  });
+  assert.deepEqual(tailles,['0.047933','0.047933','0.047933','0.047933']);
 });
 
-test('le repli de taille ne deborde pas avant le calcul de mise en page',()=>{
+test('la taille est une proportion, jamais une valeur en pixels',()=>{
   const html=qcfV4Html(parseQcfV4Page(3,page),null,[],0,0);
-  const repli=Number(/--word-size:(\d+)px/.exec(html)?.[1]);
-  assert.ok(Number.isFinite(repli));
-  // Mediane mesuree : 22,0 px sur 390 px de large. Au-dela, une page s'affiche
-  // debordante pendant le chargement de la police.
-  assert.ok(repli<=22,`un repli de ${repli} px deborderait avant le calcul`);
+  // Un repli en pixels afficherait la page a la mauvaise taille pendant le
+  // chargement de la police, puis la corrigerait d'un coup.
+  assert.doesNotMatch(html,/--word-size:\d+px/);
+  assert.match(html,/--word-size:calc\(var\(--page-w\)\*0\.047933\)/);
+  // La page garde la FORME du papier (622 x 917) et ses marges, parce que c'est
+  // cela qui place les versets.
+  assert.match(html,/--page-h:calc\(100vw\*0\.6783\)/);
+  assert.match(html,/padding:calc\(var\(--page-w\)\*0\.0884\) calc\(var\(--page-w\)\*0\.1405\)/);
 });
 
 // --- La pose des lignes dans la largeur -------------------------------------
 //
-// Mesure faite sur les pages imprimees 7, 528, 586 et 604, en lisant l'etendue de
-// l'encre de chaque ligne (sonde _inspect/pages-imprimees/etendue-lignes.py) :
-// le livre remplit ses lignes d'un bord a l'autre -- 100 % de la colonne sur les
-// quinze lignes de la page 7 -- et ne laisse courtes que celles qui terminent une
-// sourate, posees contre le bord DROIT : 62,6 % sur la page 528, 59,3 % et 54,1 %
-// sur la page 604.
+// Mesure faite sur les 23 pages imprimees de page entiere dont on dispose (sonde
+// _inspect/pages-imprimees/poser-les-lignes-courtes.py, qui lit l'etendue de
+// l'encre de chaque bande) : les bandes tombent soit a 96,4-100,0 % de la colonne
+// (274 bandes), soit a 2,7-72,7 % (23 bandes, toutes CENTREES -- 0 au bord droit,
+// 0 au bord gauche). La zone 73-96 % est entierement vide.
+//
+// L'ancienne regle posait les lignes courtes contre le bord DROIT des qu'elles
+// terminaient une sourate. Elle est refutee deux fois : les lignes courtes du
+// livre sont centrees, et les lignes qui terminent une sourate ne sont pas
+// courtes pour autant.
+//
+// Reste a savoir comment le livre REMPLIT une ligne. Mesure mot a mot (sonde
+// _inspect/tajweed2/mot-a-mot-imprime.py) : c'est une mise a l'echelle uniforme
+// de la ligne entiere, et non un jeu d'espaces. Page 414 ligne 3, mot de
+// 3,8116 em : 76,5 px mis a l'echelle contre 78 px imprimes, la ou un simple
+// resserrement des espaces en predirait 93,9. Page 604 ligne 3, mot de
+// 2,5180 em : 70,3 contre 71.
 
 const ligneDe=(surah,verset,pageNumber,line)=>qcfV4Html(
   parseQcfV4Page(pageNumber,{pagination:{total_pages:1},verses:[{verse_key:`${surah}:${verset}`,words:[
@@ -392,61 +420,86 @@ const ligneDe=(surah,verset,pageNumber,line)=>qcfV4Html(
     {position:2,page_number:pageNumber,line_number:line,char_type_name:'end',text_qpc_hafs:String(verset)},
   ]}]}),null,[],0,0);
 
-test('une ligne qui n ouvre ni ne ferme de sourate est justifiee',()=>{
-  // 2:45 : la sourate 2 compte 286 versets, la ligne est pleine dans le livre.
-  const html=ligneDe(2,45,7,11);
-  assert.match(html,/data-line="11" data-fin="0" style="grid-row:11;justify-content:space-between"/);
-});
-
-test('une ligne qui ferme une sourate reste courte, posee au bord droit',()=>{
-  // 53:62 est le dernier verset de la sourate 53 : le livre laisse cette ligne a
-  // 62,6 % de la colonne, contre le bord droit.
-  const html=ligneDe(53,62,528,9);
-  assert.match(html,/data-line="9" data-fin="1" style="grid-row:9;justify-content:flex-start"/);
+test('toutes les lignes partent justifiees, sans marque de fin de sourate',()=>{
+  // 2:45 n'ouvre ni ne ferme la sourate 2 ; 53:62 ferme la sourate 53. Les deux
+  // doivent sortir de la meme facon : la pose est decidee apres la mesure des
+  // largeurs, par fitPage(), et non a l'ecriture du HTML.
+  assert.match(ligneDe(2,45,7,11),/data-line="11" style="grid-row:11;justify-content:space-between"/);
+  assert.match(ligneDe(53,62,528,9),/data-line="9" style="grid-row:9;justify-content:space-between"/);
 });
 
 test('la page d Al-Fatiha est centree et garde son alignement',()=>{
-  // 1:1 n'est pas le dernier verset de sa sourate : la ligne est donc marquee
-  // pleine, et c'est la seule page ou cela ne suffit pas a decider -- le livre y
-  // centre Al-Fatiha dans son medaillon.
-  const html=ligneDe(1,1,1,2);
-  assert.match(html,/data-line="2" data-fin="0" data-fixe="1" style="grid-row:2;justify-content:center"/);
+  // C'est la seule page ou l'ecriture du HTML decide de la pose : Al-Fatiha est
+  // centree dans son medaillon, et fitPage() ne la repose pas.
+  assert.match(ligneDe(1,1,1,2),/data-line="2" data-fixe="1" style="grid-row:2;justify-content:center"/);
 });
 
-test('la justification ne s applique pas pendant la recherche de la taille',()=>{
+test('la regle de pose est embarquee dans la page, non recopiee',()=>{
   const html=qcfV4Html(parseQcfV4Page(3,page),null,[],0,0);
-  // Sans cette pose forcee, une ligne justifiee remplirait toujours sa rangee :
-  // la recherche de taille perdrait sa contrainte de LARGEUR et ne garderait que
-  // la hauteur, donc la page s'afficherait trop grande.
-  assert.match(html,/#page\.mesure \.line\{justify-content:flex-start!important\}/);
-  assert.match(html,/page\.classList\.add\('mesure'\)/);
-  assert.match(html,/page\.classList\.remove\('mesure'\)/);
+  // Le telephone doit faire tourner le MEME texte que le banc d'essai : la
+  // fonction est donc embarquee par toString(), et non reecrite a la main.
+  assert.match(html,/const poseDeLigne=function poseDeLigne\(naturelle, colonne, partRemplie, compressionMinimale\)/);
+  assert.match(html,/poseDeLigne\(largeurs\[index\],colonne,0\.8,0\.65\)/);
+  // La mesure repart des poses nues : mesurer une ligne deja transformee
+  // donnerait la largeur d'apres transformation, et deux passages de suite
+  // comprimeraient deux fois.
+  assert.match(html,/line\.style\.transform='';line\.style\.justifyContent=/);
 });
 
-test('un verset de fin de sourate tenu sur deux lignes ne marque que la seconde',()=>{
-  // Mesure faite sur les 604 pages : les 114 medaillons de fin de sourate sont
-  // sur la meme ligne que le dernier mot de leur verset. Compter les versets dont
-  // le dernier mot est sur la ligne en designait 216 au lieu de 114.
-  const fixture={pagination:{total_pages:1},verses:[
+test('une ligne qui occupe la colonne est remplie d un seul tenant',()=>{
+  // 8 547 des 8 820 lignes du livre demandent plus que la colonne : le livre les
+  // CONDENSE. La page 599 est le cas signale : ses onze lignes demandent 103,7 a
+  // 115,6 % de la colonne, et le scan les montre toutes pleines a 100 %.
+  const signale=poseDeLigne(16.1260*29.8,15.0*29.8,PART_REMPLIE,COMPRESSION_MINIMALE);
+  assert.equal(signale.justify,'flex-start');
+  assert.ok(Math.abs(signale.facteur-15/16.1260)<1e-9);
+  // La plus comprimee du livre : page 414 ligne 3, 22,2856 em pour 15,0 em.
+  const pire=poseDeLigne(22.2856*29.8,15.0*29.8,PART_REMPLIE,COMPRESSION_MINIMALE);
+  assert.equal(pire.justify,'flex-start');
+  assert.ok(Math.abs(pire.facteur-0.6731)<0.0001,`la page 414 ligne 3 doit sortir a 0,6731, pas a ${pire.facteur}`);
+  assert.equal(pire.depasse,false,'le livre imprime cette ligne : elle ne doit pas etre signalee');
+});
+
+test('une ligne nettement plus courte est centree, a sa largeur naturelle',()=>{
+  // Page 604 ligne 15, dernier verset du Coran : 8,1000 em, soit 54,0 % de la
+  // colonne, et le scan la mesure a 54,1 %. Le livre ne l'etire pas.
+  assert.deepEqual(poseDeLigne(8.1*29.8,15.0*29.8,PART_REMPLIE,COMPRESSION_MINIMALE),
+    {justify:'center',facteur:1,depasse:false});
+  // Et la ligne 10 de la page 350, a 92,7 %, est imprimee a 100 % : le livre
+  // l'ETIRE. La frontiere est donc entre 72,7 % et 92,7 %.
+  const etiree=poseDeLigne(13.9028*29.8,15.0*29.8,PART_REMPLIE,COMPRESSION_MINIMALE);
+  assert.equal(etiree.justify,'flex-start');
+  assert.ok(Math.abs(etiree.facteur-15/13.9028)<1e-9);
+});
+
+test('une ligne impossible est signalee plutot que comprimee a l exces',()=>{
+  // Garde-fou : la plus forte compression reelle du livre est 0,6731. Trois fois
+  // la colonne ne peut pas etre une page du livre.
+  const pose=poseDeLigne(45.0*29.8,15.0*29.8,PART_REMPLIE,COMPRESSION_MINIMALE);
+  assert.equal(pose.depasse,true);
+  assert.equal(pose.facteur,COMPRESSION_MINIMALE,'au-dela du garde-fou, la ligne est bornee plutot qu etiree a l infini');
+  assert.ok(COMPRESSION_MINIMALE<0.6731,'le garde-fou doit rester SOUS la plus forte compression du livre, sinon la page 414 declencherait une fausse alerte');
+});
+
+test('la pose ne peut pas dependre d une fin de sourate',()=>{
+  // La fonction ne recoit que des nombres : c'est la structure qui rend
+  // impossible le retour de la regle refutee. Deux largeurs egales donnent la
+  // meme pose, quoi qu'il y ait sur la ligne.
+  assert.equal(poseDeLigne.length,4,'poseDeLigne ne doit recevoir que des nombres');
+  assert.deepEqual(
+    poseDeLigne(13.2*29.8,15.0*29.8,PART_REMPLIE,COMPRESSION_MINIMALE),
+    poseDeLigne(13.2*29.8,15.0*29.8,PART_REMPLIE,COMPRESSION_MINIMALE));
+  // Et la page emise ne porte plus aucune marque de fin de sourate sur ses lignes.
+  const html=qcfV4Html(parseQcfV4Page(604,{pagination:{total_pages:1},verses:[
     {verse_key:'114:5',words:[
       {position:1,page_number:604,line_number:14,char_type_name:'word',code_v2:'\uFC41'},
       {position:2,page_number:604,line_number:14,char_type_name:'end',text_qpc_hafs:'5'},
     ]},
     {verse_key:'114:6',words:[
-      {position:1,page_number:604,line_number:14,char_type_name:'word',code_v2:'\uFC42'},
-      {position:2,page_number:604,line_number:15,char_type_name:'word',code_v2:'\uFC43'},
-      {position:3,page_number:604,line_number:15,char_type_name:'end',text_qpc_hafs:'6'},
+      {position:1,page_number:604,line_number:15,char_type_name:'word',code_v2:'\uFC42'},
+      {position:2,page_number:604,line_number:15,char_type_name:'end',text_qpc_hafs:'6'},
     ]},
-  ]};
-  const html=qcfV4Html(parseQcfV4Page(604,fixture),null,[],0,0);
-  assert.match(html,/data-line="14" data-fin="0"/);
-  assert.match(html,/data-line="15" data-fin="1"/);
-});
-
-test('une ligne courte sans fin de sourate est reconnue par sa largeur mesuree',()=>{
-  const html=qcfV4Html(parseQcfV4Page(3,page),null,[],0,0);
-  // La page 604 donne ce cas : sa ligne 14 porte 114:5 seule, a 72,7 % de la
-  // colonne, pour garder le dernier verset du Coran sur sa propre ligne.
-  assert.match(html,/line\.dataset\.fin==='1'\|\|largeurs\[index\]<colonne\*0\.8/);
-  assert.match(html,/line\.dataset\.fixe/);
+  ]}),null,[],0,0);
+  assert.equal((html.match(/data-fin/g)||[]).length,0);
+  assert.match(html,/data-line="15" style="grid-row:15;/);
 });

@@ -61,7 +61,10 @@ export function QcfV4MushafPage({page,width,height,playingVerseId,difficultyIds,
       const message=JSON.parse(event.nativeEvent.data);
       if(message.type==='ready')setFontReady(true);
       if(message.type==='font-error')setError('La police Tajweed ne s’est pas chargée.');
-      if(message.type==='layout-error')setError(`La ligne ${message.line||'concernée'} dépasse la page, même en réduisant le texte.`);
+      // Le livre comprime ses lignes, et la plus forte compression des 604 pages
+      // vaut 0,6731 (page 414, ligne 3). Ce message n'est donc atteignable que
+      // par une page mal composée, jamais par une page du Moushaf.
+      if(message.type==='layout-error')setError(`La ligne ${message.line||'concernée'} dépasse la page.`);
       if(message.type==='verse'&&data&&Number.isInteger(message.id)&&message.id>=data.firstVerseId&&message.id<=data.lastVerseId)onVerseLongPress(message.id);
       if(message.type==='tap')onTap();
     }catch{/* Ignore messages unrelated to the reader. */}
