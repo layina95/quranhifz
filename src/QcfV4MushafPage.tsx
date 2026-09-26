@@ -40,9 +40,12 @@ export function QcfV4MushafPage({page,width,height,playingVerseId,difficultyIds,
     setData(null);setError(null);setFontReady(false);
     loadQcfV4Page(page).then(result=>{
       if(!active)return;
+      // La page reconstituee doit couvrir exactement les versets que la table
+      // lui attribue : c'est le controle qui garantit que chaque verset occupe
+      // la place du Moushaf imprime, et qu'aucun n'est perdu ni compte deux fois.
       const expected=pageRange(page);
       if(result.firstVerseId!==expected.start||result.lastVerseId!==expected.end){
-        setError('Cette page ne correspond pas encore aux limites du Moushaf existant.');return;
+        setError('Cette page est incomplète : un verset de son début ou de sa fin manque.');return;
       }
       setData(result);
     }).catch(reason=>{if(active)setError(reason instanceof Error?reason.message:'Page Tajweed indisponible.');});
@@ -58,7 +61,7 @@ export function QcfV4MushafPage({page,width,height,playingVerseId,difficultyIds,
       const message=JSON.parse(event.nativeEvent.data);
       if(message.type==='ready')setFontReady(true);
       if(message.type==='font-error')setError('La police Tajweed ne s’est pas chargée.');
-      if(message.type==='layout-error')setError(`La ligne ${message.line||'concernée'} ne tient pas sans réduire le texte.`);
+      if(message.type==='layout-error')setError(`La ligne ${message.line||'concernée'} dépasse la page, même en réduisant le texte.`);
       if(message.type==='verse'&&data&&Number.isInteger(message.id)&&message.id>=data.firstVerseId&&message.id<=data.lastVerseId)onVerseLongPress(message.id);
       if(message.type==='tap')onTap();
     }catch{/* Ignore messages unrelated to the reader. */}

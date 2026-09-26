@@ -1,4 +1,4 @@
-import {verseId} from './quran';
+import {verseAt,verseId} from './quran';
 
 export type QcfV4Word = {
   verseId:number;
@@ -17,8 +17,15 @@ type ApiWord = {position?:unknown;page_number?:unknown;line_number?:unknown;char
 type ApiVerse = {verse_key?:unknown;words?:unknown};
 type ApiPage = {verses?:unknown;pagination?:{total_pages?:unknown}};
 
+/**
+ * Ce que la page porte et que sa propre reponse ne porte pas. Le premier mot
+ * d'une sourate qui ouvre la page suivante est dessine la-bas : sa ligne ne se
+ * lit que dans la reponse de cette page-la.
+ */
+export type ContexteQcfV4 = {sourateSuivante?:{surah:number;ligne:number}};
+
 /** Reject incomplete or mixed-edition API responses before they reach the reader. */
-export function parseQcfV4Page(page:number,input:unknown):QcfV4Page {
+export function parseQcfV4Page(page:number,input:unknown,contexte?:ContexteQcfV4):QcfV4Page {
   if(!Number.isInteger(page)||page<1||page>604)throw new Error('Numéro de page QCF V4 invalide.');
   const response=input as ApiPage|null;
   if(!response||!Array.isArray(response.verses)||response.verses.length===0||response.pagination?.total_pages!==1)
@@ -83,8 +90,109 @@ export function parseQcfV4Page(page:number,input:unknown):QcfV4Page {
     occupied.add(headerLine);
     if(hasBasmala){decorations.push({line:firstLine-1,kind:'basmala',surah});occupied.add(firstLine-1);}
   }
+  // Le bandeau d'une sourate qui ouvre la page suivante tient la derniere ligne
+  // de CELLE-CI. Mesure faite sur les 114 sourates : celles dont le premier mot
+  // est en ligne 2 ont leur bandeau sur la page precedente, et pour chacune cette
+  // page s'arrete en ligne 14. Le premier mot de cette sourate est dessine sur la
+  // page suivante, donc absent de cette reponse : sans ce contexte, son bandeau
+  // n'existait nulle part et la derniere ligne restait vide.
+  const suivante=contexte?.sourateSuivante;
+  if(suivante&&suivante.ligne===2){
+    if(occupied.has(rowCount))
+      throw new Error(`Emplacement du bandeau de la sourate ${suivante.surah} non vérifié sur cette page QCF V4.`);
+    decorations.push({line:rowCount,kind:'surahHeader',surah:suivante.surah});
+    occupied.add(rowCount);
+  }
   const ordered=[...lines].sort((a,b)=>a[0]-b[0]).map(([number,words])=>({number,words}));
   return {page,lines:ordered,decorations:decorations.sort((a,b)=>a.line-b.line),rowCount,firstVerseId,lastVerseId};
+}
+
+/**
+ * Ce qui manque a une page reconstituee de sa seule reponse : les versets de son
+ * debut ou de sa fin dont les mots sont dessines sur une voisine.
+ *
+ * Mesure faite sur les 604 pages : vingt-cinq pages sont dans ce cas, toujours
+ * d'un seul cote, et chaque manque est effectivement annonce par la voisine
+ * designee. La fonction est ici, dans le coeur, pour que l'application et la
+ * sonde des 604 pages ne puissent pas diverger sur cette decision.
+ */
+export function manquesDePage(page:QcfV4Page,attendu:{start:number;end:number}):{tete:boolean;queue:boolean}{
+  return {tete:page.firstVerseId!==attendu.start,queue:page.lastVerseId!==attendu.end};
+}
+
+/**
+ * La page suivante ouvre-t-elle une sourate dont le bandeau tient la DERNIERE
+ * ligne de celle-ci ? Rend le numero de cette sourate, ou null.
+ *
+ * Mesure faite sur les 114 sourates : les vingt sourates dont le premier mot est
+ * en ligne 2 ont leur bandeau sur la page precedente, et pour chacune cette page
+ * s'arrete en ligne 14. Le premier mot de cette sourate est dessine sur la page
+ * suivante : sa ligne ne se lit que dans la reponse de celle-la, et sans elle le
+ * bandeau n'existe nulle part. On ne la demande que si la derniere ligne est
+ * libre, c'est-a-dire si le bandeau peut effectivement tenir ici.
+ */
+export function ouvreUneSourate(page:QcfV4Page,attendu:{start:number;end:number}):number|null{
+  const apres=verseAt(attendu.end+1);
+  if(!apres||apres.ayah!==1||apres.surah===1||apres.surah===9)return null;
+  const derniere=page.lines.length?page.lines[page.lines.length-1].number:0;
+  if(derniere>=page.rowCount)return null;
+  return apres.surah;
+}
+
+function rangDeVerset(verse:ApiVerse):number{
+  const cle=typeof verse.verse_key==='string'?verse.verse_key:'';
+  const [surah,ayah]=cle.split(':').map(Number);
+  return verseId(surah,ayah)??Number.MAX_SAFE_INTEGER;
+}
+
+/**
+ * Reunir les reponses des pages voisines pour reconstituer UNE page.
+ *
+ * Une reponse de page annonce les versets de SA page, pas ceux dont les mots sont
+ * dessines ailleurs : mesure faite sur les 604 pages, trente-six pages portent des
+ * versets annonces par une voisine, et cinquante-six versets n'etaient dessines
+ * nulle part parce que leur annonce et leur encre ne tombaient pas sur la meme
+ * page. La page 585 en donne la forme exacte : sa reponse annonce 80:41 et 80:42,
+ * dont tous les mots portent la page 586, ou ils tiennent la ligne 1.
+ *
+ * Le tri par reference de verset est necessaire : le parseur exige que les versets
+ * reellement dessines se suivent, et les voisines arrivent dans le desordre.
+ */
+export function reunirReponses(page:number,reponses:unknown[]):unknown{
+  const vus=new Set<string>();
+  const verses:ApiVerse[]=[];
+  for(const reponse of reponses){
+    const liste=(reponse as ApiPage|null)?.verses;
+    if(!Array.isArray(liste)||(reponse as ApiPage|null)?.pagination?.total_pages!==1)
+      throw new Error('Réponse QCF V4 incomplète : la page entière est nécessaire.');
+    for(const verse of liste as ApiVerse[]){
+      const cle=verse?.verse_key;
+      if(typeof cle!=='string'||vus.has(cle))continue;
+      if(!Array.isArray(verse.words)||!verse.words.some(word=>(word as ApiWord)?.page_number===page))continue;
+      vus.add(cle);
+      verses.push(verse);
+    }
+  }
+  verses.sort((a,b)=>rangDeVerset(a)-rangDeVerset(b));
+  return {pagination:{total_pages:1},verses};
+}
+
+/**
+ * Le premier mot d'une sourate dans une reponse de page, quand cette page en
+ * ouvre une : sa ligne dit ou tient le bandeau de la sourate.
+ */
+export function ouvertureDeSourate(input:unknown):{surah:number;ligne:number}|null{
+  const liste=(input as ApiPage|null)?.verses;
+  if(!Array.isArray(liste))return null;
+  for(const verse of liste as ApiVerse[]){
+    if(typeof verse.verse_key!=='string'||!Array.isArray(verse.words))continue;
+    const [surah,ayah]=verse.verse_key.split(':').map(Number);
+    if(ayah!==1)continue;
+    const premier=(verse.words as ApiWord[]).find(word=>word.char_type_name==='word'&&Number(word.position)===1);
+    if(!premier||!Number.isInteger(premier.line_number))return null;
+    return {surah,ligne:Number(premier.line_number)};
+  }
+  return null;
 }
 
 /**
@@ -105,9 +213,13 @@ export function messageDeRefus(statut:number):string{
 /**
  * Le meme service sert les memes pages par une seconde route, sans identifiant :
  * l'API publique api.quran.com. Mesure faite le 26 septembre 2026 : elle rend
- * pour les 604 pages exactement les limites de pageRange() -- 6236 versets lus,
- * 604 accords, aucun ecart -- et le parseur ci-dessus accepte ses 604 reponses.
+ * pour les 604 pages le placement du Moushaf imprime -- le champ page_number de
+ * chaque mot -- et le parseur accepte ses 604 reponses, 83 665 mots au total.
  * Elle n'est donc pas un pis-aller approximatif : c'est la meme edition.
+ *
+ * Attention : cette route annonce les versets par la page ou ils sont LISTES,
+ * qui n'est pas toujours celle ou ils sont DESSINES. C'est reunirReponses() qui
+ * reconstitue la page, en interrogeant aussi les voisines.
  */
 export const API_PUBLIQUE='https://api.quran.com/api/v4';
 

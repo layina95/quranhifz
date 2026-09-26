@@ -108,13 +108,93 @@ contrôle d'ordre mord toujours — un trou réel entre deux versets dessinés r
 refusé, et les deux règles sont couvertes par des tests hors ligne dont on a
 vérifié qu'ils échouent sur la version antérieure du parseur.
 
-### Les 604 limites de page
+### La table des 604 pages était celle de Tanzil, pas celle du Moushaf imprimé
 
-La comparaison des 604 limites de page de cette édition avec `pageRange()` de
-l'édition locale **a été faite**, en lisant le `page_number` de chaque verset
-(114 requêtes, 6 236 versets) : **604 accords, aucun écart**. Un témoin a été
-passé en décalant l'oracle local d'une seule page, et il a relevé 603 écarts —
-le comparateur mesure donc bien ce qu'il prétend mesurer.
+C'est la confrontation à la **page imprimée** qui a tranché, après que trois
+hypothèses eurent été écartées par la mesure.
+
+La table locale `src/data/pages.json` venait de l'application de référence et
+portait la division de Tanzil, qui **n'est pas** celle du Moushaf imprimé. Le
+`page_number` de chaque mot, lui, donne le placement imprimé : sur les 604 pages
+il forme un pavage exact — 604 pages, 6 236 versets, **0 trou, 0 recouvrement**.
+Les deux divisions diffèrent sur **36 pages**, et 56 versets n'étaient dessinés
+nulle part (5:77, 5:90, 6:131, 55:17, 80:41, 80:42, 83:5, …, 100:9), soit
+361 mots perdus.
+
+Quatre sources en ligne donnaient la division de la table locale : Quran.com,
+surahquran, islam.wiki, alquran.cloud et Tanzil rendent tous le même jeu de
+données. Le **livre** a donc été lu directement :
+
+- le PDF vectoriel de la page 585 (King Fahd Complex, Moushaf Madani) s'arrête au
+  médaillon **٤٠** ;
+- le scan `https://quran.ksu.edu.sa/png_big/585.png` (Moushaf de Médine, cartouche
+  de page ٥٨٥) s'arrête lui aussi à **٤٠** ;
+- le haut du scan 586 porte `تَرْهَقُهَا قَتَرَةٌ ٤١` puis
+  `أُولَٰئِكَ هُمُ ٱلْكَفَرَةُ ٱلْفَجَرَةُ ٤٢` sur la ligne 1, `سُورَةُ التَّكْوِيرِ`
+  en ligne 2, la basmala en ligne 3, `إِذَا ٱلشَّمْسُ كُوِّرَتْ ١` en ligne 4 ;
+- le compte des points de code de la police confirme : celle de la page 585
+  référence 167 codes = 127 mots + 40 médaillons, exactement le placement de
+  l'API ; celle de la page 586 en référence 141 contre 133 éléments attribués,
+  soit les 6 mots et 2 médaillons de 80:41 et 80:42.
+
+**Le livre s'arrête donc à 80:40, et c'était la table locale qui était fausse.**
+`pages.json` a été régénéré depuis le placement imprimé par
+`scripts/regenerer-pages.mjs`, qui refuse d'écrire si le pavage n'est pas exact :
+604 pages, 6 236 versets couverts, **0 problème de pavage**, 26 151 octets. Les
+36 pages corrigées commencent par `585 : 80:1..80:42 → 80:1..80:40` et
+`586 : 81:1..81:29 → 80:41..81:29`.
+
+Comme une réponse de page **annonce** les versets de sa page et non ceux dont les
+mots sont dessinés ailleurs, le service réunit la réponse de la page et celle de
+la voisine désignée — 25 pages sur 604 en ont besoin, toujours d'un seul côté, et
+chaque manque est effectivement annoncé par cette voisine.
+
+### Où le livre pose chaque ligne
+
+Mesure faite en lisant l'étendue de l'encre de chaque ligne sur les pages
+imprimées 7, 528, 586 et 604 (`_inspect/pages-imprimees/etendue-lignes.py`) :
+
+- **le livre remplit ses lignes d'un bord à l'autre** : 100 % de la colonne sur
+  les quinze lignes de la page 7, et sur les lignes 3, 7, 8, 12, 13 de la page
+  604 ;
+- **une ligne qui termine une sourate reste courte et se pose contre le bord
+  droit** : 62,6 % sur la page 528, 59,3 % et 54,1 % sur la page 604 ;
+- **la page 1 fait exception** : Al-Fatiha y est centrée dans son médaillon.
+
+Le lecteur pose donc chaque ligne selon sa largeur mesurée : justifiée si elle
+occupe au moins 80 % de la ligne la plus large de la page, posée au bord droit
+sinon, et centrée sur la page 1. Le seuil de 80 % sépare nettement les deux
+populations mesurées — une ligne pleine occupe au moins 93 % de la colonne, une
+ligne courte au plus 73 % — et il attrape le cas de la page 604 dont la ligne 14
+porte 114:5 seule, courte à 72,7 % sans terminer de sourate, pour garder le
+dernier verset du Coran sur sa propre ligne.
+
+Une ligne est reconnue comme fin de sourate quand elle porte le **médaillon** du
+dernier verset d'une sourate. Le médaillon et non le dernier mot : un verset peut
+tenir sur deux lignes, et compter les versets dont le dernier mot tombe sur la
+ligne en désignait **216 au lieu de 114** — la page 604 marquait sa ligne 14, qui
+porte 114:5, comme une fin de sourate. Mesure faite sur les 604 pages : les
+**114 médaillons** de fin de sourate sont sur la même ligne que le dernier mot de
+leur verset, aucun désaccord.
+
+Pendant la recherche de la taille, les lignes sont reposées à leur largeur
+**naturelle** : une ligne justifiée remplit toujours sa rangée et ne dirait donc
+plus rien de la place que le texte demande.
+
+### La taille du texte, mesurée et non choisie
+
+Les avances réelles des 604 polices ont été décodées hors ligne
+(`_inspect/tajweed2/`). La ligne la plus large demande, selon la page, de
+**16,8 px** (page 414) à **28,2 px** (page 1, ligne 5) sur un écran de 390 px, et
+**13,8 px** au minimum sur un écran de 320 px.
+
+L'ancien plancher valait `max(19, 88 % du plafond)` = **25 px** : **602 pages sur
+604 ne pouvaient pas tenir**, et affichaient « la ligne X ne tient pas » à la
+place de la page. Le plancher est maintenant une taille de lecture fixe de
+**12 px**, et le plafond suit la largeur de l'écran :
+`min(32, ⌈largeur × 0,074⌉, hauteur de rangée / 1,45)`. Le coefficient 0,074 est
+mesuré : le pire cas demande `0,958 / 13,244 em = 0,07233` fois la largeur, soit
+**2,3 % de marge**, et aucune page n'est refusée de 320 à 430 px de large.
 
 
 Chaque mot porte l'identifiant du verset Hafs : le surlignage pendant l'audio et
