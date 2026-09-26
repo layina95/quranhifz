@@ -109,4 +109,4 @@ Ne mettre aucun certificat, mot de passe ou profil privé dans GitHub.
 
 ## Vérifications effectuées
 
-Le contrôle TypeScript et 46 tests automatisés passent, dont l’isolation des comptes, les rappels à 19 h, la configuration Firebase du build Android, les répétitions audio L’export Metro iOS et Android de la version 0.9.0 a réussi. Les parcours du partage vocal, les notifications distantes et la présentation sur téléphones réels restent à vérifier avec deux comptes et des appareils iOS et Android. La configuration APNs du projet Expo n’est pas encore disponible ; une IPA non signée ne suffit pas à valider les push iOS.
+Le contrôle TypeScript et les tests automatisés passent, dont l’isolation des comptes, les rappels à 19 h, la configuration Firebase du build Android, les répétitions audio L’export Metro iOS et Android de la version 0.9.0 a réussi. Les parcours du partage vocal, les notifications distantes et la présentation sur téléphones réels restent à vérifier avec deux comptes et des appareils iOS et Android. La configuration APNs du projet Expo n’est pas encore disponible ; une IPA non signée ne suffit pas à valider les push iOS.
