@@ -15,6 +15,11 @@ jobs:
         with:
           node-version: '24'
           cache: pnpm
+      # Meme porte que du cote Android : deux paquets portant le meme numero de
+      # version sont indistinguables dans l historique, et l App Store refuse un
+      # build deja depose.
+      - name: Refuser une version deja livree
+        run: node scripts/versionner.mjs verifier
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm test

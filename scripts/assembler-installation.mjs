@@ -32,6 +32,8 @@ export const ORDRE = [
   'recitation-sharing.sql',
   'admin-notifications.sql',
   'daily-content.sql',
+  'social-pseudo.sql',
+  'admin-contact.sql',
 ];
 
 /**

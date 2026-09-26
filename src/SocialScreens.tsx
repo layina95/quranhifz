@@ -3,6 +3,7 @@ import {Alert,Keyboard,KeyboardAvoidingView,PanResponder,Platform,Pressable,Scro
 import {createAudioPlayer} from 'expo-audio';
 import {Button,Card,CheckChoice,Choice,colors,Field,Label,Title} from './ui/theme';
 import {reference} from './core/quran';
+import {contactEnvoyable,normaliserPseudo,pseudoAffiche,pseudoUtilisable,raisonPseudoRefuse,textePastille} from './core/social';
 import {currentUser,supabase} from './services/sync';
 import * as social from './services/social';
 import {setActiveConversation,updatePushPresence} from './services/notifications';
@@ -49,6 +50,12 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
   const [otherReadAt,setOtherReadAt]=useState<string|null>(null),[otherTyping,setOtherTyping]=useState(false);
   const [showFriendTools,setShowFriendTools]=useState(false);
   const [keyboardOpen,setKeyboardOpen]=useState(false);
+  const [pseudoDraft,setPseudoDraft]=useState(''),[editingPseudo,setEditingPseudo]=useState(false);
+  const [trouve,setTrouve]=useState<{id:string;display_name:string;handle:string|null;deja_lie:boolean}|null>(null);
+  const [contactOpen,setContactOpen]=useState(false);
+  const [contactMessages,setContactMessages]=useState<social.AdminContactMessage[]>([]);
+  const [contactDraft,setContactDraft]=useState('');
+  const [contactUnread,setContactUnread]=useState(0);
   const typingChannel=useRef<ReturnType<NonNullable<typeof supabase>['channel']>|null>(null);
   const typingTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const outgoingTypingTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -63,13 +70,31 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
     const hidden=Keyboard.addListener('keyboardDidHide',()=>setKeyboardOpen(false));
     return()=>{shown.remove();hidden.remove();};
   },[]);
-  const backSwipe=useMemo(()=>PanResponder.create({onMoveShouldSetPanResponder:(_,gesture)=>Platform.OS==='ios'&&gesture.x0<26&&gesture.dx>22&&Math.abs(gesture.dx)>Math.abs(gesture.dy)*1.4,onPanResponderRelease:(_,gesture)=>{if(gesture.dx<75)return;if(selected){setSelected(null);setOverview(null);}else onClose();}}),[selected,onClose]);
+  const backSwipe=useMemo(()=>PanResponder.create({onMoveShouldSetPanResponder:(_,gesture)=>Platform.OS==='ios'&&gesture.x0<26&&gesture.dx>22&&Math.abs(gesture.dx)>Math.abs(gesture.dy)*1.4,onPanResponderRelease:(_,gesture)=>{if(gesture.dx<75)return;if(contactOpen)setContactOpen(false);else if(selected){setSelected(null);setOverview(null);}else onClose();}}),[selected,contactOpen,onClose]);
   const room=selected?.kind==='link'?{linkId:selected.id}:{groupId:selected?.id};
+  // Le fil avec l'administrateur : a part de la messagerie entre amis, et
+  // accessible sans aucun lien d'amitie.
+  const loadContact=async()=>{
+    const [fil,nonLus]=await Promise.all([social.monFilContact(),social.mesReponsesAdminNonLues()]);
+    setContactMessages(fil);setContactUnread(nonLus);
+    return fil;
+  };
+  const openContact=async()=>{
+    setSelected(null);setContactOpen(true);
+    try{
+      const fil=await loadContact();
+      if(fil.length&&myId)await social.marquerContactLu(myId);
+      setContactUnread(0);
+    }catch(e){setNotice(errorText(e));}
+  };
   const load=async()=>{
     const user=await currentUser();setMyId(user?.id??'');
     const p=await social.ensureSocialProfile();setProfile(p);
     const [l,g,s]=await Promise.all([social.listFriendLinks(),social.listGroups(),social.mySocialSuspension()]);
     setLinks(l);setGroups(g);setSuspension(s);
+    // La pastille du bouton « contacter l'administrateur » : sans elle, une
+    // reponse pourrait attendre longtemps sans que personne ne le sache.
+    social.mesReponsesAdminNonLues().then(setContactUnread).catch(()=>{});
     const accepted=l.filter(link=>link.status==='accepted');
     social.conversationSummaries(accepted.map(link=>link.id)).then(setSummaries).catch(()=>{});
     Promise.all(accepted.map(async link=>{const other=link.requester_id===user?.id?link.recipient_id:link.requester_id;try{return [other,(await social.friendOverview(other)).is_online] as const;}catch{return [other,false] as const;}})).then(rows=>setFriendStatuses(Object.fromEntries(rows))).catch(()=>{});
@@ -92,7 +117,7 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
     catch(e){setNotice(errorText(e));}finally{setBusy(false);}
   };
   useEffect(()=>{if(!selected)load().catch(e=>setNotice(errorText(e)));},[selected?.id]);
-  useEffect(()=>{const client=supabase;if(selected||!client)return;const channel=client.channel('friend-inbox').on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_messages'},()=>load().catch(()=>{})).subscribe();const timer=setInterval(()=>load().catch(()=>{}),15000);return()=>{clearInterval(timer);client.removeChannel(channel);};},[selected?.id]);
+  useEffect(()=>{const client=supabase;if(selected||!client)return;const channel=client.channel('friend-inbox').on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_messages'},()=>load().catch(()=>{})).on('postgres_changes',{event:'INSERT',schema:'public',table:'admin_contact_messages'},()=>{load().catch(()=>{});loadContact().catch(()=>{});}).subscribe();const timer=setInterval(()=>load().catch(()=>{}),15000);return()=>{clearInterval(timer);client.removeChannel(channel);};},[selected?.id]);
   useEffect(()=>{if(initialCode)setCode(initialCode);},[initialCode]);
   useEffect(()=>{if(!initialLinkId)return;const link=links.find(item=>item.id===initialLinkId&&item.status==='accepted');if(link&&selected?.id!==link.id)setSelected({id:link.id,kind:'link',name:link.other?.display_name??'Ami'});},[initialLinkId,links]);
   useEffect(()=>{const linkId=selected?.kind==='link'?selected.id:null;setActiveConversation(linkId);
@@ -116,16 +141,38 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
   return <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':'height'} {...backSwipe.panHandlers}>
     <ScrollView ref={scrollRef} style={{flex:1}} keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:18,paddingBottom:45}} onScroll={event=>{if(selected&&hasOlder&&!loadingOlder&&event.nativeEvent.contentOffset.y<24)loadOlder().catch(()=>{});}} scrollEventThrottle={200}>
     {selected&&<Button secondary onPress={()=>{audioPlayer.current?.pause();setAudioMessageId(null);setSelected(null);setOverview(null);}}>← Mes amis</Button>}
-    {selected?.kind==='link'?<View style={{flexDirection:'row',alignItems:'center',gap:10,marginBottom:10}}><FriendAvatar name={selected.name} path={links.find(link=>link.id===selected.id)?.other?.avatar_path} /><View style={{flex:1}}><View style={{flexDirection:'row',alignItems:'center',gap:12}}><Title>{selected.name}</Title><Pressable accessibilityRole="button" accessibilityLabel={`Signaler la conversation avec ${selected.name}`} onPress={()=>{const lastReceived=[...messages].reverse().find(message=>message.sender_id!==myId&&!message.deleted_at);if(lastReceived)setReportTarget(lastReceived.id);else setNotice('Aucun message reçu à signaler dans cette conversation.');}}><Label style={{fontSize:12,color:colors.green2,fontWeight:'700'}}>Signaler</Label></Pressable></View><Label style={{fontSize:12,color:colors.muted}}>{otherTyping?'Écrit un message…':overview?.is_online?'En ligne':'Hors ligne'}</Label></View></View>:<Title>{selected?selected.name:'Mes amis'}</Title>}
+    {selected?.kind==='link'?<View style={{flexDirection:'row',alignItems:'center',gap:10,marginBottom:10}}><FriendAvatar name={selected.name} path={links.find(link=>link.id===selected.id)?.other?.avatar_path} /><View style={{flex:1}}><View style={{flexDirection:'row',alignItems:'center',gap:12}}><Title>{selected.name}</Title><Pressable accessibilityRole="button" accessibilityLabel={`Signaler la conversation avec ${selected.name}`} onPress={()=>{const lastReceived=[...messages].reverse().find(message=>message.sender_id!==myId&&!message.deleted_at);if(lastReceived)setReportTarget(lastReceived.id);else setNotice('Aucun message reçu à signaler dans cette conversation.');}}><Label style={{fontSize:12,color:colors.green2,fontWeight:'700'}}>Signaler</Label></Pressable></View><Label style={{fontSize:12,color:colors.muted}}>{otherTyping?'Écrit un message…':overview?.is_online?'En ligne':'Hors ligne'}</Label></View></View>:<Title>{contactOpen?'Contacter l’administrateur':selected?selected.name:'Mes amis'}</Title>}
     {notice?<Card><Label>{notice}</Label></Card>:null}
-    {!selected?<>
+    {contactOpen?<>
+      <Button secondary onPress={()=>setContactOpen(false)}>← Mes amis</Button>
+      <Label style={{color:colors.muted,fontSize:13,marginBottom:10}}>Ton message arrive directement à l’administrateur, même si vous n’êtes pas amis.</Label>
+      {contactMessages.length
+        ?contactMessages.map(m=><Card key={m.id} style={{marginLeft:m.sender_id===myId?48:0,marginRight:m.sender_id===myId?0:48,backgroundColor:m.sender_id===myId?colors.soft:colors.paper,borderRadius:18,padding:12}}>
+            <Label style={{fontSize:11,color:colors.muted}}>{m.sender_id===myId?'Moi':'Administrateur'} · {new Date(m.created_at).toLocaleString('fr-FR')}</Label>
+            <Label style={{marginTop:7}}>{m.body}</Label>
+          </Card>)
+        :<Card><Label style={{color:colors.muted}}>Aucun message pour l’instant. Écris ci-dessous : l’administrateur recevra ton message.</Label></Card>}
+      <Field value={contactDraft} onChangeText={setContactDraft} placeholder="Écris ton message à l’administrateur…" multiline maxLength={2000} />
+      <Button disabled={busy||!contactEnvoyable(contactDraft)} onPress={()=>act(async()=>{await social.ecrireALAdmin(contactDraft.trim());setContactDraft('');await loadContact();},'Message envoyé à l’administrateur.')}>Envoyer à l’administrateur</Button>
+    </>:!selected?<>
       {!profile?<Card><Label>Connecte-toi à ton compte pour utiliser les amis.</Label></Card>:<>
         {heading('Mes amis')}
-        {links.filter(l=>l.status==='accepted').sort((a,b)=>(summaries[b.id]?.createdAt??b.created_at).localeCompare(summaries[a.id]?.createdAt??a.created_at)).map(l=><Card key={l.id} style={{padding:9}}><Pressable onPress={()=>openLink(l).catch(e=>setNotice(errorText(e)))} style={{flexDirection:'row',alignItems:'center',gap:11,padding:5}}><FriendAvatar name={l.other?.display_name??'Ami'} path={l.other?.avatar_path} size={44} /><View style={{flex:1}}><Label style={{fontWeight:'700'}}>{l.other?.display_name??'Ami'} {friendStatuses[otherId(l)]?'· En ligne':''}</Label><Label numberOfLines={1} style={{fontSize:12,color:colors.muted}}>{summaries[l.id]?.body??'Commencer une discussion'}</Label></View><View style={{alignItems:'flex-end'}}><Label style={{fontSize:11,color:colors.muted}}>{summaries[l.id]?new Date(summaries[l.id].createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''}</Label>{!!summaries[l.id]?.unread&&<View style={{backgroundColor:colors.green,borderRadius:12,minWidth:20,paddingHorizontal:5,alignItems:'center'}}><Label style={{fontSize:11,color:'white'}}>{summaries[l.id].unread}</Label></View>}</View></Pressable><View style={{flexDirection:'row',gap:8}}><View style={{flex:1}}><Button small secondary onPress={()=>act(()=>social.removeFriend(l.id))}>Retirer</Button></View><View style={{flex:1}}><Button small secondary onPress={()=>act(()=>social.blockFriend(otherId(l)))}>Bloquer</Button></View></View></Card>)}
+        {links.filter(l=>l.status==='accepted').sort((a,b)=>(summaries[b.id]?.createdAt??b.created_at).localeCompare(summaries[a.id]?.createdAt??a.created_at)).map(l=><Card key={l.id} style={{padding:9}}><Pressable onPress={()=>openLink(l).catch(e=>setNotice(errorText(e)))} style={{flexDirection:'row',alignItems:'center',gap:11,padding:5}}><FriendAvatar name={l.other?.display_name??'Ami'} path={l.other?.avatar_path} size={44} /><View style={{flex:1}}><Label style={{fontWeight:'700'}}>{l.other?.display_name??'Ami'} {friendStatuses[otherId(l)]?'· En ligne':''}</Label>{l.other?.handle?<Label style={{fontSize:12,color:colors.green2}}>@{l.other.handle}</Label>:null}<Label numberOfLines={1} style={{fontSize:12,color:colors.muted}}>{summaries[l.id]?.body??'Commencer une discussion'}</Label></View><View style={{alignItems:'flex-end'}}><Label style={{fontSize:11,color:colors.muted}}>{summaries[l.id]?new Date(summaries[l.id].createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''}</Label>{!!summaries[l.id]?.unread&&<View style={{backgroundColor:colors.green,borderRadius:12,minWidth:20,paddingHorizontal:5,alignItems:'center'}}><Label style={{fontSize:11,color:'white'}}>{summaries[l.id].unread}</Label></View>}</View></Pressable><View style={{flexDirection:'row',gap:8}}><View style={{flex:1}}><Button small secondary onPress={()=>act(()=>social.removeFriend(l.id))}>Retirer</Button></View><View style={{flex:1}}><Button small secondary onPress={()=>act(()=>social.blockFriend(otherId(l)))}>Bloquer</Button></View></View></Card>)}
         <Card><Label style={{fontWeight:'700'}}>Mon code d’invitation</Label><Label style={{fontSize:23,color:colors.green,marginVertical:8}}>{profile.invite_code}</Label><Label style={{fontSize:12,color:colors.muted}}>Partage ce code uniquement avec la personne que tu souhaites inviter.</Label><Button small secondary onPress={()=>Share.share({message:`Rejoins-moi sur Apprendre le Coran : coranmemoire://friend/${profile.invite_code}`}).catch(e=>setNotice(errorText(e)))}>Partager mon lien d’invitation</Button></Card>
+        <Card><Label style={{fontWeight:'700'}}>Mon pseudo</Label>
+          {profile.handle&&!editingPseudo
+            ?<><Label style={{fontSize:23,color:colors.green,marginVertical:8}}>@{profile.handle}</Label><Label style={{fontSize:12,color:colors.muted}}>On peut t’ajouter avec ce pseudo, sans code d’invitation.</Label><Button small secondary onPress={()=>{setPseudoDraft(profile.handle??'');setEditingPseudo(true);}}>Changer de pseudo</Button></>
+            :<><Field value={pseudoDraft} onChangeText={setPseudoDraft} placeholder="Pseudo, par exemple sarah.k" maxLength={21} />
+              {pseudoDraft.trim()?<Label style={{fontSize:12,color:raisonPseudoRefuse(pseudoDraft)?colors.red:colors.green,marginBottom:8}}>{raisonPseudoRefuse(pseudoDraft)??`Ton pseudo : ${pseudoAffiche(pseudoDraft)}`}</Label>:null}
+              <Button disabled={busy||!pseudoUtilisable(pseudoDraft)} onPress={()=>act(async()=>{await social.choisirPseudo(normaliserPseudo(pseudoDraft));setEditingPseudo(false);},'Pseudo enregistré.')}>Enregistrer mon pseudo</Button>
+              {profile.handle?<Button small secondary onPress={()=>setEditingPseudo(false)}>Annuler</Button>:null}</>}
+        </Card>
         {heading('Inviter un ami')}
-        <Field value={code} onChangeText={setCode} placeholder="Code d’invitation" />
-        <Button disabled={busy||!code.trim()} onPress={()=>act(async()=>{await social.sendFriendRequest(code);setCode('');},'Invitation envoyée.')}>Envoyer l’invitation</Button>
+        <Label style={{fontSize:13,color:colors.muted}}>Entre un code d’invitation, ou le pseudo de la personne.</Label>
+        <Field value={code} onChangeText={value=>{setCode(value);setTrouve(null);}} placeholder="Code d’invitation ou @pseudo" />
+        <Button secondary disabled={busy||!code.trim()} onPress={()=>act(async()=>{const rows=await social.trouverParPseudo(code);if(!rows.length)throw new Error('Aucun compte ne porte ce pseudo. Vérifie l’orthographe, ou utilise un code d’invitation.');setTrouve(rows[0]);},'')}>Vérifier ce pseudo</Button>
+        {trouve?<Card><Label style={{fontWeight:'700'}}>{trouve.display_name} · @{trouve.handle}</Label><Label style={{fontSize:12,color:colors.muted}}>{trouve.deja_lie?'Vous êtes déjà liés.':'Ce n’est pas encore un ami.'}</Label></Card>:null}
+        <Button disabled={busy||!code.trim()} onPress={()=>act(async()=>{await social.sendFriendRequest(code);setCode('');setTrouve(null);},'Invitation envoyée.')}>Envoyer l’invitation</Button>
         {heading('Invitations reçues')}
         {links.filter(l=>l.status==='pending'&&l.recipient_id===myId).map(l=><Card key={l.id}><Label>Invitation de {l.other?.display_name??'un membre'}</Label><Button small onPress={()=>act(()=>social.acceptFriend(l.id))}>Accepter</Button><Button small secondary onPress={()=>act(()=>social.declineFriend(l.id))}>Refuser</Button></Card>)}
         {links.filter(l=>l.status==='pending'&&l.requester_id===myId).map(l=><Card key={l.id}><Label>Invitation envoyée à {l.other?.display_name??'un membre'}</Label></Card>)}
@@ -134,6 +181,9 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
         <Field value={groupName} onChangeText={setGroupName} placeholder="Nom du cercle" />
         <Button secondary disabled={busy||groupName.trim().length<2} onPress={()=>act(async()=>{await social.createGroup(groupName.trim());setGroupName('');})}>Créer un cercle</Button>
         {groups.map(g=><Card key={g.id}><Label style={{fontWeight:'700'}}>{g.name}</Label><Button small onPress={()=>{setSelected({id:g.id,kind:'group',name:g.name});setOverview(null);}}>Ouvrir</Button></Card>)}
+        {heading('Une question, un souci ?')}
+        <Label style={{fontSize:13,color:colors.muted,marginBottom:8}}>Écris à l’administrateur. Ton message lui arrive même si vous n’êtes pas amis, et sans que cela ajoute un ami à ta liste.</Label>
+        <Button onPress={()=>openContact().catch(e=>setNotice(errorText(e)))}>Contacter l’administrateur{contactUnread?` · ${textePastille(contactUnread)} réponse${contactUnread>1?'s':''} à lire`:''}</Button>
       </>}
     </>:<>
       <Button small secondary onPress={()=>setShowFriendTools(!showFriendTools)}>{showFriendTools?'Masquer les options':'Profil et entraide'}</Button>
@@ -188,12 +238,22 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
   const [names,setNames]=useState<Record<string,string>>({});
   const [reason,setReason]=useState(''),[target,setTarget]=useState(''),[notice,setNotice]=useState('');
   const [duration,setDuration]=useState<'1'|'7'|'30'|'forever'>('7');
+  const [contactThreads,setContactThreads]=useState<social.AdminContactThread[]>([]);
+  const [openThreadId,setOpenThreadId]=useState<string|null>(null);
+  const [threadMessages,setThreadMessages]=useState<social.AdminContactMessage[]>([]);
+  const [replyDraft,setReplyDraft]=useState('');
   const load=async()=>{
     if(!await social.isSocialAdmin())throw new Error('Accès administrateur refusé.');
-    const [r,m,s]=await Promise.all([social.listAdminReports(),social.listAdminMessages(),social.listSocialSuspensions()]);
-    setReports(r);setMessages(m);setSuspensions(s);
-    const people=await social.adminProfiles([...m.map(x=>x.sender_id),...r.map(x=>x.reporter_id),...s.map(x=>x.user_id)]);
+    const [r,m,s,f]=await Promise.all([social.listAdminReports(),social.listAdminMessages(),social.listSocialSuspensions(),social.filsContactAdmin()]);
+    setReports(r);setMessages(m);setSuspensions(s);setContactThreads(f);
+    const people=await social.adminProfiles([...m.map(x=>x.sender_id),...r.map(x=>x.reporter_id),...s.map(x=>x.user_id),...f.map(x=>x.user_id)]);
     setNames(Object.fromEntries(people.map(x=>[x.id,x.display_name])));
+  };
+  const openThread=async(thread:{user_id:string})=>{
+    setOpenThreadId(thread.user_id);
+    setThreadMessages(await social.filContactDe(thread.user_id));
+    await social.marquerContactLu(thread.user_id);
+    await load();
   };
   const act=async(fn:()=>Promise<unknown>)=>{try{await fn();await load();setNotice('Action enregistrée.');}catch(e){setNotice(errorText(e));}};
   useEffect(()=>{load().catch(e=>setNotice(errorText(e)));},[]);
@@ -212,6 +272,25 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
     <Label style={{color:colors.muted}}>Signalements et discussions entre membres. Les actions sont vérifiées par Supabase.</Label>
     {notice?<Card><Label>{notice}</Label></Card>:null}
     <Button secondary onPress={()=>load().catch(e=>setNotice(errorText(e)))}>Actualiser</Button>
+    {heading(`Messages des membres · ${contactThreads.reduce((n,t)=>n+t.non_lus,0)} à lire`)}
+    <Label style={{fontSize:13,color:colors.muted}}>N’importe quel membre peut écrire ici, même sans être ton ami. Il ne devient pas ton ami pour autant.</Label>
+    {!contactThreads.length?<Card><Label style={{color:colors.muted}}>Aucun message pour l’instant.</Label></Card>:null}
+    {contactThreads.map(t=><Card key={t.user_id}>
+      <Label style={{fontWeight:'700'}}>{t.display_name}{t.handle?` · @${t.handle}`:''}{t.non_lus?` · ${t.non_lus} à lire`:''}</Label>
+      <Label style={{fontSize:12,color:colors.muted}}>{new Date(t.dernier_at).toLocaleString('fr-FR')}</Label>
+      <Label numberOfLines={2} style={{marginTop:4}}>{t.dernier_message??''}</Label>
+      <Button small onPress={()=>openThread(t).catch(e=>setNotice(errorText(e)))}>Ouvrir le fil</Button>
+    </Card>)}
+    {openThreadId?<Card>
+      <Label style={{fontWeight:'700'}}>Fil de {names[openThreadId]??'ce membre'}</Label>
+      {threadMessages.map(m=><View key={m.id} style={{marginTop:10}}>
+        <Label style={{fontSize:11,color:colors.muted}}>{m.sender_id===openThreadId?(names[m.sender_id]??'Membre'):'Moi'} · {new Date(m.created_at).toLocaleString('fr-FR')}</Label>
+        <Label style={{marginTop:3}}>{m.body}</Label>
+      </View>)}
+      <Field value={replyDraft} onChangeText={setReplyDraft} placeholder="Répondre à ce membre…" multiline maxLength={2000} />
+      <Button disabled={!contactEnvoyable(replyDraft)} onPress={()=>act(async()=>{await social.repondreAuMembre(openThreadId,replyDraft.trim());setReplyDraft('');setThreadMessages(await social.filContactDe(openThreadId));})}>Envoyer la réponse</Button>
+      <Button small secondary onPress={()=>{setOpenThreadId(null);setThreadMessages([]);setReplyDraft('');}}>Fermer le fil</Button>
+    </Card>:null}
     {heading(`Signalements ouverts · ${reports.length}`)}
     {reports.map(r=>{const m=messages.find(x=>x.id===r.message_id);return <Card key={r.id}>
       <Label style={{fontWeight:'700'}}>{names[r.reporter_id]??'Membre'} a signalé un message</Label>

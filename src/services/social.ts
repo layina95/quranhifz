@@ -1,7 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, progress, stats, todayLocal } from '../core/program';
 import { currentUser, supabase } from './sync';
 
-export type FriendProfile={id:string;display_name:string;invite_code:string;share_online:boolean;share_location:boolean;share_progress:boolean;avatar_path?:string|null};
+export type FriendProfile={id:string;display_name:string;invite_code:string;share_online:boolean;share_location:boolean;share_progress:boolean;avatar_path?:string|null;handle?:string|null};
 export type FriendLink={id:string;requester_id:string;recipient_id:string;status:'pending'|'accepted'|'blocked';blocked_by:string|null;created_at:string;other?:FriendProfile};
 export type FriendOverview={id:string;display_name:string;goal_label:string;weekly_verses:number;weekly_sessions:number;goal_percent:number;quran_percent:number;current_start:number|null;current_end:number|null;is_online:boolean;updated_at:string|null};
 export type FriendGroup={id:string;name:string;owner_id:string;created_at:string};
@@ -11,6 +12,8 @@ export type MessageReport={id:string;message_id:string;reason:string;reporter_id
 export type SocialSuspension={user_id:string;reason:string;suspended_until:string|null;created_at:string};
 export type SharedGoal={id:string;link_id:string;week_start:string;target_sessions:number;proposed_by:string;accepted_at:string|null};
 export type ReviewAppointment={id:string;link_id:string;starts_at:string;proposed_by:string;accepted_at:string|null};
+export type AdminContactMessage={id:string;user_id:string;sender_id:string;body:string;created_at:string;read_by_admin_at:string|null;read_by_user_at:string|null};
+export type AdminContactThread={user_id:string;display_name:string;handle:string|null;dernier_message:string|null;dernier_at:string;non_lus:number};
 
 function client(){if(!supabase)throw new Error('Connecte-toi pour utiliser les amis.');return supabase;}
 function checked<T>(response:{data:T;error:any}):T{if(response.error)throw response.error;return response.data;}
@@ -34,7 +37,9 @@ export async function listFriendLinks():Promise<FriendLink[]>{
   const byId=new Map(profiles.map(p=>[p.id,p]));
   return links.map(link=>({...link,other:byId.get(link.requester_id===user.id?link.recipient_id:link.requester_id)}));
 }
-export async function sendFriendRequest(code:string){await rpc('request_friend',{p_code:code});}
+// L'identifiant peut etre un code d'invitation ou un pseudo : c'est la meme
+// fonction de base qui tranche, pour qu'un seul chemin d'invitation existe.
+export async function sendFriendRequest(identifiant:string){await rpc('request_friend',{p_code:identifiant});}
 export async function acceptFriend(id:string){await rpc('accept_friend',{p_link:id});}
 export async function declineFriend(id:string){await rpc('decline_friend',{p_link:id});}
 export async function removeFriend(id:string){await rpc('remove_friend',{p_link:id});}
@@ -55,6 +60,61 @@ export async function publishSocialProgress(state:AppState){
   });
 }
 export async function setSocialOnline(active:boolean){await rpc('set_social_online',{p_active:active});}
+
+// --- Le pseudo --------------------------------------------------------------
+//
+// Le pseudo se choisit a la creation du compte. Or l'inscription ne donne pas
+// toujours de session tout de suite : quand Supabase exige la confirmation du
+// courriel, `signIn(...,true)` rend `null` et il n'y a personne a qui attribuer
+// un pseudo. On le met donc de cote, sous la cle du courriel — le meme motif que
+// la photo de profil — et on l'applique a la premiere connexion reussie.
+
+const pseudoKey=(email:string)=>`pending-pseudo:${email.trim().toLowerCase()}`;
+
+export async function choisirPseudo(handle:string):Promise<string>{return await rpc('choisir_pseudo',{p_handle:handle}) as string;}
+
+export async function trouverParPseudo(handle:string):Promise<{id:string;display_name:string;handle:string|null;deja_lie:boolean}[]>{
+  return await rpc('trouver_par_pseudo',{p_handle:handle}) as {id:string;display_name:string;handle:string|null;deja_lie:boolean}[];
+}
+
+export async function stagePseudo(email:string,pseudo:string){await AsyncStorage.setItem(pseudoKey(email),pseudo);}
+
+/**
+ * Applique le pseudo mis de cote, s'il y en a un. Ne jette pas : un pseudo
+ * refuse (deja pris entre-temps) ne doit pas empecher la connexion d'aboutir.
+ */
+export async function appliquerPseudoEnAttente(email:string):Promise<string|null>{
+  const key=pseudoKey(email),pseudo=await AsyncStorage.getItem(key);
+  if(!pseudo)return null;
+  try{
+    const applique=await choisirPseudo(pseudo);
+    await AsyncStorage.removeItem(key);
+    return applique;
+  }catch{return null;}
+}
+
+// --- Ecrire a l'administrateur ----------------------------------------------
+//
+// Un canal a part, et pas un lien d'amitie : ecrire a l'administrateur ne doit
+// pas faire de lui un ami, ni ouvrir le partage de progression. Le fil est
+// designe par `user_id` — celui du membre — et l'administrateur repond dedans.
+
+export async function ecrireALAdmin(body:string):Promise<string>{return await rpc('ecrire_a_l_admin',{p_body:body}) as string;}
+export async function repondreAuMembre(userId:string,body:string):Promise<string>{return await rpc('repondre_au_membre',{p_user:userId,p_body:body}) as string;}
+export async function marquerContactLu(userId:string){await rpc('marquer_contact_lu',{p_user:userId});}
+export async function mesReponsesAdminNonLues():Promise<number>{return await rpc('mes_reponses_admin_non_lues') as number;}
+export async function filsContactAdmin():Promise<AdminContactThread[]>{
+  return await rpc('fils_contact_admin') as AdminContactThread[];
+}
+/** Le fil du membre connecte. La politique de lecture le limite a son propre fil. */
+export async function monFilContact():Promise<AdminContactMessage[]>{
+  const user=await currentUser();if(!user)return [];
+  return checked(await client().from('admin_contact_messages').select('*').eq('user_id',user.id).order('created_at')) as AdminContactMessage[];
+}
+/** Le fil d'un membre, vu par l'administrateur. */
+export async function filContactDe(userId:string):Promise<AdminContactMessage[]>{
+  return checked(await client().from('admin_contact_messages').select('*').eq('user_id',userId).order('created_at')) as AdminContactMessage[];
+}
 
 export async function listGroups():Promise<FriendGroup[]>{return checked(await client().from('friend_groups').select('*').order('created_at',{ascending:false})) as FriendGroup[];}
 export async function listGroupMembers(groupId:string):Promise<GroupMember[]>{

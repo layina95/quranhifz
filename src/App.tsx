@@ -10,7 +10,8 @@ import { loadAccountState, loadState, saveState } from './services/storage';
 import { changePassword, consumeAuthLink, currentUser, pullState, pushState, requestPasswordLink, resendSignupConfirmation, signIn, signOut, supabase, syncConfigured } from './services/sync';
 import {MushafPage} from './MushafPage';
 import {AdminScreen,FriendsScreen} from './SocialScreens';
-import {ensureSocialProfile,FriendProfile,isSocialAdmin,mySocialProfile,publishSocialProgress,setSocialOnline,unreadMessageCount,updateSocialProfile} from './services/social';
+import {ensureSocialProfile,FriendProfile,isSocialAdmin,mySocialProfile,publishSocialProgress,setSocialOnline,unreadMessageCount,updateSocialProfile,appliquerPseudoEnAttente,stagePseudo} from './services/social';
+import {normaliserPseudo,pseudoAffiche,pseudoUtilisable,raisonPseudoRefuse} from './core/social';
 import { Notifications, cancelAutomaticReminders, ensureNotificationPermission, notificationDestination, registerPushDevice, saveNotificationPreferences, scheduledReminderCounts, setAdminMessagePresentationEnabled, setCorrectionPresentationEnabled, setMessagePresentationEnabled, setProgressPresentationEnabled, testLocalNotification, unregisterPushDevice, updatePushPresence } from './services/notifications';
 import {AudioCommand,PassageAudioPlayer} from './PassageAudioPlayer';
 import {RecitationRecorder} from './RecitationRecorder';
@@ -83,6 +84,9 @@ function AppContent(){
     setWizard(result.state.profile?.firstName?result.state.onboardingDone?null:0:-1);
     if(result.shouldPush)await pushState(result.state);
     if(user.email)syncStagedAvatar(user.email).catch(()=>{});
+    // Le pseudo choisi a l'inscription, si l'inscription n'avait pas encore de
+    // session : on l'applique maintenant qu'il y a un compte a qui l'attribuer.
+    if(user.email)await appliquerPseudoEnAttente(user.email);
     return result.state;
   };
   const leaveAccount=()=>{
@@ -206,15 +210,21 @@ function AppContent(){
 function AccountWelcome({onAuthenticated,onContinue}:{onAuthenticated:(user:{id:string;email?:string})=>Promise<AppState>;onContinue:()=>void}){
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
+  const [pseudo,setPseudo]=useState('');
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
   const [photoUri,setPhotoUri]=useState<string|null>(null);
+  const refusPseudo=raisonPseudoRefuse(pseudo);
   const submit=async(register:boolean)=>{
     setBusy(true);setMessage('');
     try{
       if(register&&photoUri)await stageAvatar(email.trim(),photoUri);
+      // Le pseudo part avec l'inscription. Si Supabase exige la confirmation du
+      // courriel, il n'y a pas encore de session : le pseudo est mis de cote et
+      // applique a la premiere connexion reussie.
+      if(register)await stagePseudo(email.trim(),normaliserPseudo(pseudo));
       const user=await signIn(email.trim(),password,register);
-      if(user){await onAuthenticated(user);return;}
+      if(user){await appliquerPseudoEnAttente(email.trim());await onAuthenticated(user);return;}
       if(register)setMessage('Un courriel de confirmation t’a été envoyé. Ouvre le lien sur ce téléphone, puis commence ton programme.');
       else setMessage('Connexion impossible. Vérifie ton adresse et ton mot de passe.');
     }catch(error:any){setMessage(error?.message??'Une erreur est survenue. Réessaie.');}
@@ -226,8 +236,12 @@ function AccountWelcome({onAuthenticated,onContinue}:{onAuthenticated:(user:{id:
       <Label style={{fontSize:18,fontWeight:'700',marginBottom:12}}>Créer mon compte</Label>
       <Field value={email} onChangeText={setEmail} placeholder="Adresse e-mail" keyboardType="email-address" autoCapitalize="none" />
       <Field value={password} onChangeText={setPassword} placeholder="Mot de passe (au moins 6 caractères)" secureTextEntry />
+      <Field value={pseudo} onChangeText={setPseudo} placeholder="Pseudo, par exemple sarah.k" autoCapitalize="none" maxLength={21} />
+      {pseudo.trim()
+        ?<Label style={{fontSize:12,color:refusPseudo?colors.red:colors.green,marginBottom:8}}>{refusPseudo??`Ton pseudo : ${pseudoAffiche(pseudo)}`}</Label>
+        :<Label style={{fontSize:12,color:colors.muted,marginBottom:8}}>Tes amis pourront t’ajouter avec ce pseudo, sans code d’invitation.</Label>}
       <Pressable onPress={()=>chooseAvatar().then(uri=>{if(uri)setPhotoUri(uri);}).catch(error=>setMessage(error?.message??'Photo indisponible.'))} style={{flexDirection:'row',alignItems:'center',gap:12,marginVertical:12}}><FriendAvatar name="Apprenant" uri={photoUri} size={44} /><Label style={{color:colors.green2}}>Ajouter une photo (facultatif)</Label></Pressable>
-      <Button disabled={busy||!email.includes('@')||password.length<6} onPress={()=>submit(true)}>Créer mon compte</Button>
+      <Button disabled={busy||!email.includes('@')||password.length<6||!pseudoUtilisable(pseudo)} onPress={()=>submit(true)}>Créer mon compte</Button>
       <Button secondary disabled={busy||!email.includes('@')||!password} onPress={()=>submit(false)}>J’ai déjà un compte · me connecter</Button>
       {message?<Label style={{marginTop:12,color:colors.text}}>{message}</Label>:null}
       {message.includes('confirmation')?<Button secondary small onPress={onContinue}>Commencer mon programme</Button>:null}

@@ -15,6 +15,11 @@ jobs:
         with:
           node-version: '24'
           cache: pnpm
+      # La porte : une version deja livree ne se recompile pas. Un oubli de bump
+      # se voit ici, avant la compilation, et non apres coup dans un paquet
+      # qu'Android refuse d'installer par-dessus l'ancien.
+      - name: Refuser une version deja livree
+        run: node scripts/versionner.mjs verifier
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
