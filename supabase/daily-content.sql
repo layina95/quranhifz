@@ -60,6 +60,35 @@ create table if not exists public.daily_content_favorites (
   primary key (user_id, content_id)
 );
 
+-- Une table deja creee par une version anterieure n'est pas touchee par un
+-- « create table if not exists » : les colonnes ajoutees depuis ne se creent pas
+-- toutes seules, et la premiere ecriture est refusee avec
+--   could not find the 'explanation' column of 'daily_contents' in the schema cache
+-- Ces lignes rendent la migration convergente : quelle que soit la version deja
+-- en base, elle se termine sur la forme attendue. Chacune est sans effet quand la
+-- colonne est deja la, et aucune n'est « not null » — ajouter une colonne
+-- obligatoire a une table qui porte deja des lignes echouerait.
+alter table public.daily_contents add column if not exists kind text;
+alter table public.daily_contents add column if not exists category_id uuid;
+alter table public.daily_contents add column if not exists title text;
+alter table public.daily_contents add column if not exists arabic_text text;
+alter table public.daily_contents add column if not exists phonetic text;
+alter table public.daily_contents add column if not exists translation text;
+alter table public.daily_contents add column if not exists explanation text;
+alter table public.daily_contents add column if not exists source text;
+alter table public.daily_contents add column if not exists audio_path text;
+alter table public.daily_contents add column if not exists position int;
+alter table public.daily_contents add column if not exists active boolean;
+alter table public.daily_contents add column if not exists created_by uuid;
+alter table public.daily_contents add column if not exists created_at timestamptz;
+alter table public.daily_contents add column if not exists updated_at timestamptz;
+alter table public.daily_content_categories add column if not exists kind text;
+alter table public.daily_content_categories add column if not exists name text;
+alter table public.daily_content_categories add column if not exists icon text;
+alter table public.daily_content_categories add column if not exists position int;
+alter table public.daily_content_categories add column if not exists active boolean;
+alter table public.daily_content_categories add column if not exists created_at timestamptz;
+
 create index if not exists daily_content_schedule_date on public.daily_content_schedule(scheduled_date);
 create index if not exists daily_contents_kind_position on public.daily_contents(kind, position);
 create index if not exists daily_contents_active on public.daily_contents(active);
@@ -184,6 +213,14 @@ using (bucket_id='daily-content-audio' and private.is_app_admin());
 -- The fallback is deterministic (a rotation by the day number), not random :
 -- two people asking for the same day see the same thing, and a refresh does
 -- not shuffle the card under the reader's eyes.
+--
+-- On DETRUIT avant de recreer, et ce n'est pas une precaution de style :
+-- « create or replace » ne peut pas changer le type de retour d'une fonction.
+-- Or c'est exactement ce qui differe quand la fonction vient d'une version
+-- anterieure — la colonne « explanation » ajoutee ici en fait partie. PostgreSQL
+-- refuse alors en 42P13 et s'arrete la, laissant tout le reste du fichier non
+-- applique. C'est ce qui a fait echouer la premiere installation.
+drop function if exists public.daily_content_for_date(date);
 create or replace function public.daily_content_for_date(p_date date)
 returns table (
   id uuid,
@@ -231,6 +268,8 @@ revoke all on function public.daily_content_for_date(date) from public;
 grant execute on function public.daily_content_for_date(date) to anon, authenticated;
 
 -- Favourites of the signed-in user, with the content itself, in one call.
+-- Meme raison que ci-dessus : le type de retour a change avec « explanation ».
+drop function if exists public.my_daily_favorites();
 create or replace function public.my_daily_favorites()
 returns table (
   id uuid,
@@ -256,3 +295,10 @@ language sql stable security definer set search_path = '' as $$
 $$;
 revoke all on function public.my_daily_favorites() from public,anon;
 grant execute on function public.my_daily_favorites() to authenticated;
+
+-- PostgREST garde en memoire la forme des tables exposees. Il est prevenu des
+-- changements, mais relit le schema de facon asynchrone : une requete partie juste
+-- apres la migration peut encore se voir refuser une colonne pourtant creee, avec
+-- « could not find the 'x' column of 'y' in the schema cache ». Forcer la relecture
+-- ici ferme cette fenetre, et ne coute rien.
+notify pgrst, 'reload schema';

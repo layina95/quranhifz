@@ -11,7 +11,7 @@ import {audioFileName,audioMime,DailyCategory,DailyCategoryInput,DailyContent,Da
 // ecrans n'aient qu'un seul point d'entree.
 
 export type {DailyCategory,DailyCategoryInput,DailyContent,DailyContentInput,DailyFavorite,DailyKind};
-export {audioMime,audioFileName,audioPickerTypes,dailyKinds,dailyKindLabel,dailyKindTab,dailyKindHeading,dailyKindEmpty,dailyKindCategoryLabel,dailyShareText,MAX_AUDIO_BYTES} from '../core/daily';
+export {audioMime,audioFileName,audioPickerTypes,dailyKinds,dailyKindLabel,dailyKindTab,dailyKindHeading,dailyKindEmpty,dailyKindCategoryLabel,dailyShareText,MAX_AUDIO_BYTES,NOTIFICATION_MIN_LENGTH,NOTIFICATION_TITLE_MAX,NOTIFICATION_BODY_MAX,notificationDuJour,notificationEnvoyable} from '../core/daily';
 
 function client(){
   if(!supabase)throw new Error('Connexion Supabase requise.');

@@ -5,7 +5,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import {Button,Card,Choice,colors,Field,Label,Title} from './ui/theme';
 import {addDays,todayLocal} from './core/program';
 import {DailyContentCard,dailyErrorText} from './DailyContent';
-import {audioPickerTypes,clearSchedule,DailyCategory,DailyCategoryInput,DailyContent,DailyContentInput,DailyKind,dailyKindLabel,dailyKinds,deleteCategory,deleteContent,deleteDailyAudio,listCategories,listContents,MAX_AUDIO_BYTES,moveCategory,saveCategory,saveContent,scheduleContent,scheduledFor,setCategoryActive,setContentActive,signedDailyAudioUrl,uploadDailyAudio} from './services/dailyContent';
+import {audioPickerTypes,clearSchedule,dailyForDate,DailyCategory,DailyCategoryInput,DailyContent,DailyContentInput,DailyKind,dailyKindEmpty,dailyKindLabel,dailyKinds,deleteCategory,deleteContent,deleteDailyAudio,listCategories,listContents,MAX_AUDIO_BYTES,moveCategory,notificationDuJour,notificationEnvoyable,saveCategory,saveContent,scheduleContent,scheduledFor,setCategoryActive,setContentActive,signedDailyAudioUrl,uploadDailyAudio} from './services/dailyContent';
+import {AdminNotificationHistory,listAdminNotificationHistory,listAdminNotificationRecipients,sendAdminNotification} from './services/adminNotifications';
 import {isSocialAdmin} from './services/social';
 
 // Administration de Rappels & Invocations. L'apercu n'est pas une maquette : il
@@ -13,7 +14,10 @@ import {isSocialAdmin} from './services/social';
 // de toute facon l'ecriture a qui n'est pas administrateur ; ce controle-ci
 // evite seulement d'afficher des formulaires qui echoueraient.
 
-type Mode='liste'|'contenu'|'categories'|'programmation';
+type Mode='liste'|'contenu'|'categories'|'programmation'|'envoi';
+
+/** Un identifiant de demande : la base refuse deux envois identiques. */
+const demandeId=()=>`daily-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 
 const brouillonVide=(kind:DailyKind):DailyContentInput=>({
   kind,categoryId:null,title:'',arabicText:'',phonetic:'',translation:'',
@@ -63,6 +67,12 @@ export function AdminDailyContent({onClose}:{onClose:()=>void}){
   const [categorieEdition,setCategorieEdition]=useState<string|null>(null);
   const [date,setDate]=useState(todayLocal());
   const [planifie,setPlanifie]=useState<Record<DailyKind,string|null>>({rappel:null,invocation:null});
+  // L'envoi manuel aux familles : rien n'est programme, c'est un geste.
+  const [jour,setJour]=useState<DailyContent[]|null>(null);
+  const [envoiEnCours,setEnvoiEnCours]=useState<string|null>(null);
+  const [envoiNotice,setEnvoiNotice]=useState('');
+  const [destinataires,setDestinataires]=useState(0);
+  const [historique,setHistorique]=useState<AdminNotificationHistory[]>([]);
   const apercu=usePreviewAudio(apercuUri);
 
   const load=async()=>{
@@ -87,6 +97,37 @@ export function AdminDailyContent({onClose}:{onClose:()=>void}){
     scheduledFor(date).then(rows=>{if(vivant)setPlanifie(rows);}).catch(e=>{if(vivant)setNotice(dailyErrorText(e));});
     return()=>{vivant=false;};
   },[mode,date,contents]);
+
+  useEffect(()=>{
+    if(mode!=='envoi')return;
+    let vivant=true;
+    setEnvoiNotice('');
+    Promise.all([dailyForDate(todayLocal()),listAdminNotificationRecipients(),listAdminNotificationHistory()])
+      .then(([contenus,gens,envois])=>{if(!vivant)return;setJour(contenus);setDestinataires(gens.length);setHistorique(envois);})
+      .catch(e=>{if(vivant)setEnvoiNotice(dailyErrorText(e));});
+    return()=>{vivant=false;};
+  },[mode]);
+
+  // Rien n'est programme : c'est le geste d'envoyer qui decide. La base refuse un
+  // envoi deux fois pour la meme demande, d'ou l'identifiant neuf a chaque fois.
+  const lancerEnvoi=async(message:{title:string;body:string})=>{
+    setEnvoiEnCours(message.title);setEnvoiNotice('');
+    try{
+      const resultat=await sendAdminNotification(null,message.title,message.body,demandeId());
+      setEnvoiNotice(`Envoi lancé pour ${resultat.recipient_count} personne(s) sur ${resultat.device_count} appareil(s).`);
+      setHistorique(await listAdminNotificationHistory());
+    }catch(e){setEnvoiNotice(dailyErrorText(e));}
+    finally{setEnvoiEnCours(null);}
+  };
+
+  const envoyer=(contenu:DailyContent)=>{
+    const message=notificationDuJour(contenu);
+    if(!notificationEnvoyable(message)){setEnvoiNotice('Ce contenu n’a pas assez de texte à envoyer. Ajoute une traduction, une prononciation ou un texte arabe.');return;}
+    Alert.alert('Envoyer aux familles ?',`${destinataires} personne(s) ayant accepté les notifications.\n\n${message.title}\n${message.body}`,[
+      {text:'Annuler',style:'cancel'},
+      {text:'Envoyer',onPress:()=>{lancerEnvoi(message).catch(()=>{});}},
+    ]);
+  };
 
   const act=async(fn:()=>Promise<unknown>,message='Enregistré.')=>{
     setBusy(true);setNotice('');
@@ -228,6 +269,35 @@ export function AdminDailyContent({onClose}:{onClose:()=>void}){
     </Card>)}
   </ScrollView>;
 
+  if(mode==='envoi')return <ScrollView contentContainerStyle={{padding:18,paddingBottom:55}}>
+    <Button secondary onPress={()=>setMode('liste')}>← Rappels &amp; Invocations</Button>
+    <Title>Envoyer aux familles</Title>
+    <Label style={{color:colors.muted,marginBottom:12}}>Le rappel et l’invocation du jour, envoyés maintenant comme notification. Rien n’est programmé : c’est toi qui décides, et tu peux ne rien envoyer.</Label>
+    {envoiNotice?<Card><Label style={{fontSize:13}}>{envoiNotice}</Label></Card>:null}
+    {!destinataires&&jour!==null?<Card><Label style={{color:colors.muted}}>Personne n’a encore accepté les notifications. Un envoi ne toucherait aucun appareil.</Label></Card>:null}
+    {jour===null?<Card><Label style={{color:colors.muted}}>Lecture du jour…</Label></Card>:
+      dailyKinds.map(value=>{
+        const contenu=jour.find(row=>row.kind===value)??null;
+        const message=contenu?notificationDuJour(contenu):null;
+        const pret=!!message&&notificationEnvoyable(message);
+        return <Card key={value}>
+          <Label style={{fontWeight:'700'}}>{dailyKindLabel[value]}</Label>
+          {contenu&&message?<>
+            <Label style={{fontSize:12,color:colors.muted,marginTop:4}}>{contenu.title}{contenu.planned?' · programmé':' · rotation automatique'}</Label>
+            <View style={{padding:12,borderRadius:12,backgroundColor:colors.soft,marginVertical:8}}><Label style={{fontWeight:'700'}}>{message.title}</Label><Label>{message.body}</Label></View>
+            <Button disabled={!!envoiEnCours||!destinataires||!pret} onPress={()=>envoyer(contenu)}>{envoiEnCours===message.title?'Envoi en cours…':'Envoyer maintenant'}</Button>
+          </>:<Label style={{color:colors.muted,fontSize:13,marginTop:6}}>{dailyKindEmpty[value]}</Label>}
+        </Card>;
+      })}
+    <Label style={{fontWeight:'700',marginTop:14}}>Derniers envois</Label>
+    {historique.map(item=><Card key={item.id}>
+      <Label style={{fontWeight:'700'}}>{item.title}</Label>
+      <Label>{item.body}</Label>
+      <Label style={{fontSize:12,color:colors.muted}}>{new Date(item.created_at).toLocaleString('fr-FR')} · {item.recipient_count} personne(s), {item.device_count} appareil(s)</Label>
+    </Card>)}
+    {!historique.length?<Card><Label style={{color:colors.muted}}>Aucun envoi pour l’instant.</Label></Card>:null}
+  </ScrollView>;
+
   return <ScrollView contentContainerStyle={{padding:18,paddingBottom:55}}>
     <Button secondary onPress={onClose}>← Modération</Button>
     <Title>Rappels &amp; Invocations</Title>
@@ -238,6 +308,7 @@ export function AdminDailyContent({onClose}:{onClose:()=>void}){
       <View style={{flex:1}}><Button secondary onPress={()=>setMode('categories')}>Catégories</Button></View>
       <View style={{flex:1}}><Button secondary onPress={()=>setMode('programmation')}>Programmer</Button></View>
     </View>
+    <Button secondary onPress={()=>setMode('envoi')}>Envoyer aux familles</Button>
     <Button secondary onPress={()=>load().catch(e=>setNotice(dailyErrorText(e)))}>Actualiser</Button>
     <View style={{flexDirection:'row',gap:8,marginTop:12,marginBottom:4}}>{dailyKinds.map(value=><View key={value} style={{flex:1}}><Button small secondary={kind!==value} onPress={()=>setKind(value)}>{dailyKindLabel[value]}</Button></View>)}</View>
     {listes.map(row=><Card key={row.id}>

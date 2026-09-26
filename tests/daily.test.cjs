@@ -9,7 +9,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const chemin=require('node:path');
 const {readFileSync}=require('node:fs');
-const {audioMime,audioFileName,audioPickerTypes,dailyShareText,dailyKinds,dailyKindTab,dailyKindLabel,dailyKindEmpty,MAX_AUDIO_BYTES}=require('./build/core/daily.js');
+const {audioMime,audioFileName,audioPickerTypes,dailyShareText,dailyKinds,dailyKindTab,dailyKindLabel,dailyKindEmpty,MAX_AUDIO_BYTES,notificationDuJour,notificationEnvoyable,NOTIFICATION_MIN_LENGTH,NOTIFICATION_TITLE_MAX,NOTIFICATION_BODY_MAX}=require('./build/core/daily.js');
 
 const racine=chemin.join(__dirname,'..');
 const lire=nom=>readFileSync(chemin.join(racine,nom),'utf8');
@@ -208,4 +208,124 @@ test('aucune notion de score, de niveau ni de progression',()=>{
     const trouve=interdit.exec(code);
     assert.equal(trouve,null,`${fichier} parle de « ${trouve?.[0]} » : la section doit rester sans score ni progression`);
   }
+});
+
+/** Les colonnes declarees dans un `create table if not exists public.<nom> ( ... );`. */
+function colonnesDeclarees(sql,nomTable){
+  const debut=sql.indexOf(`create table if not exists public.${nomTable} (`);
+  assert.ok(debut>=0,`la table ${nomTable} n est pas declaree dans le script`);
+  const corps=sql.slice(debut,sql.indexOf('\n);',debut));
+  const colonnes=[];
+  for(const brute of corps.split('\n').slice(1)){
+    const ligne=brute.replace(/--.*$/,'').trim();
+    if(!ligne)continue;
+    // Les contraintes de table ne nomment pas de colonne : les compter ferait
+    // apparaitre des « colonnes » qui n'existent pas.
+    if(/^(unique|foreign key|primary key|check|constraint)\b/i.test(ligne))continue;
+    const nom=/^([a-z_][a-z0-9_]*)\s+/.exec(ligne);
+    if(!nom)continue;
+    colonnes.push({nom:nom[1],obligatoire:/\bnot null\b/i.test(ligne),defaut:/\bdefault\b/i.test(ligne)});
+  }
+  return colonnes;
+}
+
+/** Les cles de l objet `values` de `saveContent`, c est-a-dire ce que l application ecrit. */
+function colonnesEcrites(source){
+  const debut=source.indexOf('const values={');
+  assert.ok(debut>=0,'saveContent n ecrit plus d objet « values » : le controle ne mesure rien');
+  const corps=source.slice(debut,source.indexOf('};',debut));
+  return [...corps.matchAll(/(?:^|[,{])\s*([a-z_][a-z0-9_]*)\s*:/g)].map(m=>m[1]);
+}
+
+test('les colonnes que l application ecrit sont celles de la table',()=>{
+  // L accord qui manquait. L application ecrivait « explanation » et la base
+  // repondait « could not find the 'explanation' column of 'daily_contents' in
+  // the schema cache » : rien, dans la suite, ne comparait ce que le code envoie
+  // a ce que le script declare. Deux listes separees, aucune ne lisant l autre.
+  const colonnes=colonnesDeclarees(lire('supabase/daily-content.sql'),'daily_contents');
+  const noms=new Set(colonnes.map(c=>c.nom));
+  const ecrites=colonnesEcrites(lire('src/services/dailyContent.ts'));
+
+  // Sans ce garde-fou, un analyseur casse rendrait une liste vide, et la boucle
+  // suivante passerait au vert sans avoir rien verifie.
+  assert.ok(ecrites.length>=10,`seulement ${ecrites.length} colonne(s) lue(s) : l analyse de saveContent ne mesure rien`);
+
+  for(const cle of ecrites){
+    assert.ok(noms.has(cle),`l application ecrit « ${cle} », qui n est pas une colonne de daily_contents`);
+  }
+  // Et dans l autre sens : une colonne obligatoire sans valeur par defaut que
+  // personne n ecrit ferait echouer chaque enregistrement.
+  for(const colonne of colonnes.filter(c=>c.obligatoire&&!c.defaut&&c.nom!=='id')){
+    assert.ok(ecrites.includes(colonne.nom),`la colonne obligatoire « ${colonne.nom} » n est jamais ecrite`);
+  }
+});
+
+test('le message envoye aux familles tient sur un ecran de telephone',()=>{
+  // La traduction d'abord : elle se lit sans savoir l'arabe. Puis la
+  // prononciation, pour qui recite. L'arabe en dernier recours.
+  const complet={title:'La patience',translation:'Certes, Allah est avec les patients.',phonetic:'Inna Allaha ma’a as-sabirin',arabicText:'إِنَّ اللَّهَ مَعَ الصَّابِرِينَ'};
+  assert.deepEqual(notificationDuJour(complet),{title:'La patience',body:'Certes, Allah est avec les patients.'});
+  assert.equal(notificationDuJour({...complet,translation:null}).body,complet.phonetic);
+  assert.equal(notificationDuJour({...complet,translation:null,phonetic:null}).body,complet.arabicText);
+  // Sans rien d'autre, le titre fait office de message plutot que de partir vide.
+  assert.equal(notificationDuJour({...complet,translation:null,phonetic:null,arabicText:null}).body,'La patience');
+
+  // Une notification qui porte des sauts de ligne s'affiche mal.
+  assert.equal(notificationDuJour({...complet,translation:'  Une   phrase\nsur\ndeux lignes.  '}).body,'Une phrase sur deux lignes.');
+
+  // Les bornes de la base sont respectees par construction.
+  const long=notificationDuJour({...complet,title:'T'.repeat(200),translation:'M'.repeat(900)});
+  assert.equal(long.title.length,NOTIFICATION_TITLE_MAX);
+  assert.equal(long.body.length,NOTIFICATION_BODY_MAX);
+});
+
+test('les bornes du message sont celles que la base impose',()=>{
+  // L'accord entre deux fichiers qui ne peuvent pas se lire : le domaine et le
+  // script SQL. Si l'un bouge sans l'autre, l'envoi est refuse par la base apres
+  // avoir ete annonce comme parti.
+  const sql=lire('supabase/admin-notifications.sql');
+  const titre=/char_length\(p_title\) not between (\d+) and (\d+)/.exec(sql);
+  const corps=/char_length\(p_body\) not between (\d+) and (\d+)/.exec(sql);
+  assert.ok(titre&&corps,'la contrainte de longueur est introuvable dans admin-notifications.sql');
+  assert.equal(NOTIFICATION_MIN_LENGTH,Number(titre[1]),'la borne basse du titre a divergé');
+  assert.equal(NOTIFICATION_TITLE_MAX,Number(titre[2]),'la borne haute du titre a divergé');
+  assert.equal(NOTIFICATION_MIN_LENGTH,Number(corps[1]),'la borne basse du message a divergé');
+  assert.equal(NOTIFICATION_BODY_MAX,Number(corps[2]),'la borne haute du message a divergé');
+
+  // Et la fonction qui decide de l'envoi suit ces bornes, dans les deux sens.
+  assert.equal(notificationEnvoyable({title:'Titre',body:'Un message assez long.'}),true);
+  assert.equal(notificationEnvoyable({title:'Ti',body:'Un message assez long.'}),false);
+  assert.equal(notificationEnvoyable({title:'Titre',body:'ok'}),false);
+  assert.equal(notificationEnvoyable({title:'T'.repeat(NOTIFICATION_TITLE_MAX),body:'M'.repeat(NOTIFICATION_BODY_MAX)}),true);
+  assert.equal(notificationEnvoyable({title:'T'.repeat(NOTIFICATION_TITLE_MAX+1),body:'Un message.'}),false);
+  assert.equal(notificationEnvoyable({title:'Titre',body:'M'.repeat(NOTIFICATION_BODY_MAX+1)}),false);
+});
+
+test('l envoi aux familles part de l espace Rappels, et il est manuel',()=>{
+  const admin=lire('src/AdminDailyContent.tsx');
+  // Le geste doit exister dans l'espace nomme par la personne, pas seulement
+  // dans l'ecran de notifications.
+  assert.ok(/setMode\('envoi'\)/.test(admin),'aucun bouton n ouvre l envoi depuis les Rappels');
+  assert.ok(/mode==='envoi'/.test(admin),'l ecran d envoi n est pas rendu');
+  assert.ok(/sendAdminNotification\(null,message\.title,message\.body,demandeId\(\)\)/.test(admin),'l envoi ne passe pas par la fonction d envoi existante');
+  // A tous les eligibles, et avec un identifiant de demande neuf : la base refuse
+  // deux fois la meme demande, ce qui protege d'un double appui.
+  assert.ok(/const demandeId=\(\)=>`daily-\$\{Date\.now\(\)\}/.test(admin),'l identifiant de demande n est plus unique');
+  // Rien de programme : le mot « programme » ne doit pas decrire l'envoi.
+  assert.ok(!/setTimeout|setInterval/.test(sansCommentaires(admin)),'l envoi doit rester un geste, pas une tache planifiee');
+  // Et le texte annonce clairement que rien n'est programme.
+  assert.ok(/Rien n’est programmé/.test(admin),'l ecran ne dit pas que rien n est programme');
+});
+
+test('la migration demande a PostgREST de relire le schema',()=>{
+  // Incident reel : la migration etait appliquee, la colonne existait, et la
+  // premiere ecriture a quand meme ete refusee. PostgREST garde en memoire la
+  // forme des tables et relit le schema de facon asynchrone. Le rechargement
+  // force ferme cette fenetre ; sans lui, la personne devant son ecran voit un
+  // refus incomprehensible pour une colonne qui est bien la.
+  const sql=lire('supabase/daily-content.sql');
+  assert.ok(/notify pgrst, 'reload schema';/.test(sql),'la migration ne force pas la relecture du schema par PostgREST');
+  // Et l installation en un seul collage doit le porter aussi, sinon la fenetre
+  // se rouvre pour celle et celui qui suivent le guide.
+  assert.ok(/notify pgrst, 'reload schema';/.test(lire('../installation-complete.sql')),'l installation assemblee ne force pas la relecture');
 });

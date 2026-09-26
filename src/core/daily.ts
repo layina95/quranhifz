@@ -83,3 +83,39 @@ export function dailyShareText(content:Pick<DailyContent,'title'|'arabicText'|'t
   if(content.source)lignes.push('',`— ${content.source}`);
   return lignes.join('\n');
 }
+
+// --- L'envoi manuel aux familles ---------------------------------------------
+//
+// Ces bornes sont celles que la base impose a `send_admin_notification`
+// (admin-notifications.sql : « char_length(p_title) not between 3 and 80 or
+// char_length(p_body) not between 3 and 500 »). Les ecrire ici, c'est pouvoir les
+// verifier par un test qui les compare aux deux endroits a la fois.
+
+export const NOTIFICATION_MIN_LENGTH=3;
+export const NOTIFICATION_TITLE_MAX=80;
+export const NOTIFICATION_BODY_MAX=500;
+
+/**
+ * Ce qu'on envoie pour un contenu du jour : le titre tel quel, et le texte le
+ * plus utile a lire sur un ecran de telephone.
+ *
+ * La traduction d'abord, parce qu'elle se lit sans savoir l'arabe ; la
+ * prononciation ensuite, pour qui recite ; l'arabe en dernier recours, quand il
+ * n'y a rien d'autre. Le texte est ramene sur une ligne : une notification qui
+ * porte des sauts de ligne s'affiche mal.
+ */
+export function notificationDuJour(content:Pick<DailyContent,'title'|'translation'|'phonetic'|'arabicText'>):{title:string;body:string}{
+  const replie=(valeur:string|null|undefined)=>(valeur??'').replace(/\s+/g,' ').trim();
+  const titre=replie(content.title).slice(0,NOTIFICATION_TITLE_MAX);
+  const matiere=replie(content.translation)||replie(content.phonetic)||replie(content.arabicText)||titre;
+  return {title:titre,body:matiere.slice(0,NOTIFICATION_BODY_MAX)};
+}
+
+/**
+ * La base refusera tout ce qui sort de ses bornes. Le dire ici evite d'envoyer
+ * une requete pour rien, et surtout d'annoncer un envoi qui n'a pas eu lieu.
+ */
+export function notificationEnvoyable(message:{title:string;body:string}):boolean{
+  return message.title.length>=NOTIFICATION_MIN_LENGTH&&message.title.length<=NOTIFICATION_TITLE_MAX
+    &&message.body.length>=NOTIFICATION_MIN_LENGTH&&message.body.length<=NOTIFICATION_BODY_MAX;
+}
