@@ -12,7 +12,7 @@ function glyph(code:string){return code.replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi
  * Les cotes de la page imprimee, mesurees sur le scan du Moushaf (622 x 917 px
  * pour une page) :
  *
- *   - la colonne de texte va de x=87 a x=533, soit 447 px, et de y=55 a y=863,
+ *   - la colonne de texte va de x=66 a x=556, soit 490 px, et de y=55 a y=863,
  *     soit 808 px pour quinze rangees ;
  *   - le pas des rangees vaut 54,0 px (mediane des ecarts entre bandes sur les
  *     pages 414 et 604, mesure au seuil 140 comme au seuil 80 : les hauteurs de
@@ -25,26 +25,61 @@ function glyph(code:string){return code.replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi
  *     et les hauteurs de bandes comparees aux boites d'encre des memes lignes
  *     dans la police (mediane 29,2 sur la page 414, 30,3 sur la page 604).
  *
- * D'ou deux constantes qui gouvernent tout le reste : la colonne vaut 15,0 em
- * (447 / 29,8), et le pas vaut 1,81 em (54,0 / 29,8).
+ * D'ou deux constantes qui gouvernent tout le reste : la colonne vaut 16,15 em
+ * (481,3 / 29,8), et le pas vaut 1,81 em (54,0 / 29,8).
+ *
+ * ATTENTION -- la colonne a d'abord ete lue FAUX, et il faut savoir pourquoi,
+ * parce que l'erreur se refait toute seule. La sonde d'origine
+ * (poser-les-lignes-courtes.py) restreignait son examen a x = 0,14 a 0,86 de la
+ * largeur, soit 87 a 535 px, puis annoncait « colonne x=87..533 = 447 px » : elle
+ * lisait les bords de SA PROPRE FENETRE. Toute ligne depassant la fenetre etait
+ * rognee a 447 px et comptee « pleine a 100 % ». Le moteur en a herite une colonne
+ * trop etroite de 7,1 %, ce qui ecrasait presque chaque ligne, et jusqu'a 32 %
+ * sur la page 414 (voir COMPRESSION_MINIMALE).
+ *
+ * Mesure refaite sans fenetre, sur la page entiere, le cadre decoratif etant
+ * ecarte par le blanc qui le separe du texte
+ * (_inspect/pages-imprimees/largeur-du-texte.py, distribution-des-bandes.py) :
+ * 291 bandes sur 20 pages, 91,4 % d'entre elles entre 470 et 493 px, mediane 480,
+ * et rien entre 265 et 470 px. La colonne se deduit ensuite de trois facons
+ * independantes, qui tombent toutes sur 16,15 em a 1,5 % pres :
+ *
+ *   - ajustement aux moindres carres de l'encre imprimee sur le modele
+ *     « mise a l'echelle uniforme » (_inspect/tajweed2/ajuster-la-colonne.py,
+ *     256 lignes justifiees) : 473,8 px = 15,91 em ;
+ *   - la mediane des largeurs NATURELLES du corpus, qui est le point ou le livre
+ *     n'aurait ni a etirer ni a comprimer : 16,14 em ;
+ *   - le facteur moyen de mise a l'echelle, qui doit valoir 1 si la police QCF V4
+ *     est dessinee pour la page qu'elle habille : il vaut 1,0008 a 16,15 em,
+ *     contre 0,9298 a l'ancienne colonne de 15,0 em.
+ *
+ * Une quatrieme voie, visuelle, confirme la troisieme : en dessinant la page 599
+ * avec les contours reels de la police et en la superposant au scan
+ * (_inspect/tajweed2/dessiner-page-599.py), le bord droit de l'encre tombe a
+ * 2 px de l'imprime, et c'est le bord gauche qui manquait -- il faut 487 px pour
+ * le combler, soit 16,34 em.
+ *
+ * La lettre, elle, n'a jamais bouge : 29,8 px/em, et les quatre lignes courtes
+ * de la page 604, que le livre n'ajuste pas, sont imprimees a leur largeur
+ * naturelle a 0,2 % pres (265 px mesurees contre 265,2 et 265,5 attendues).
  */
 export const PAGE_RATIO = 622 / 917;
-export const MARGE_LATERALE = 0.1405;
+export const MARGE_LATERALE = 0.11313;
 export const MARGE_VERTICALE = 0.0884;
-export const COLONNE_EM = 15.0;
+export const COLONNE_EM = 16.15;
 export const PAS_EM = 1.81;
 
 /**
  * La largeur de la lettre, en part de la largeur de la page : la colonne vaut
- * 0,719 de la page (1 - 2 x 0,1405) et 15,0 em, donc la lettre vaut
- * 0,719 / 15,0 = 0,047933 -- le meme chiffre que 29,8 / 622 = 0,047910, mesure
- * sur le scan. Sur une page de 390 px cela donne une lettre de 18,69 px/em et
- * une colonne de 280,4 px = 15,000 em, exactement la proportion du livre.
+ * 0,77374 de la page (1 - 2 x 0,11313) et 16,15 em, donc la lettre vaut
+ * 0,77374 / 16,15 = 0,047910 -- exactement 29,8 / 622 = 0,047910, mesure sur le
+ * scan. Sur une page de 390 px cela donne une lettre de 18,69 px/em et une
+ * colonne de 301,7 px = 16,15 em, la proportion du livre.
  *
  * Le livre ne change pas de taille d'une page a l'autre : c'est cette
  * proportion fixe qui remplace l'ancienne recherche, page par page, d'une taille
  * qui fasse tenir la ligne la plus large. Une page dont une ligne demande plus de
- * 15,0 em n'est pas ecrite plus petit -- le livre la COMPRIME (voir
+ * 16,15 em n'est pas ecrite plus petit -- le livre la COMPRIME (voir
  * COMPRESSION_MINIMALE).
  */
 export const TAILLE_PAGE = (1 - 2 * MARGE_LATERALE) / COLONNE_EM;
@@ -53,32 +88,40 @@ export const TAILLE_PAGE = (1 - 2 * MARGE_LATERALE) / COLONNE_EM;
  * En deca de cette part de la colonne, le livre ne remplit pas la ligne : il la
  * centre, a sa largeur naturelle. Au-dela, il la remplit.
  *
- * Mesure faite sur les 23 pages imprimees de page entiere dont on dispose
- * (sonde _inspect/pages-imprimees/poser-les-lignes-courtes.py) : les bandes
- * imprimees tombent soit a 96,4-100,0 % de la colonne (274 bandes), soit a
- * 2,7-72,7 % (23 bandes, toutes CENTREES : 0 au bord droit, 0 au bord gauche).
- * La zone 73-96 % est ENTIEREMENT VIDE : le livre ne laisse jamais une ligne
- * entre les deux.
+ * Mesure faite sur les 20 pages imprimees de page entiere dont on dispose
+ * (sondes _inspect/pages-imprimees/distribution-des-bandes.py et
+ * largeur-du-texte.py, qui ne rognent rien) : 291 bandes, dont 91,4 % tombent
+ * entre 470 et 493 px, soit 97,7 a 102,5 % de la colonne de 481,3 px, et 8,6 %
+ * sous 265 px, soit moins de 56 %. Entre 265 et 470 px -- de 55 % a 97,7 % -- il
+ * n'y a RIEN : 0,4 % des bandes. Les courtes sont toutes CENTREES (0 au bord
+ * droit, 0 au bord gauche).
  *
- * La frontiere est donc quelque part entre 72,7 % et 92,7 %, et la mesure ne la
- * serre pas davantage : 0,8 s'y place. Elle est au moins eprouvee par le bas --
- * la ligne 10 de la page 350, qui ne fait que 92,7 % de la colonne, est imprimee
- * a 100 %, donc le livre l'ETIRE ; et par le haut -- la ligne 15 de la page 604,
- * qui fait 54,0 %, est imprimee a 54,1 %, donc le livre la laisse naturelle.
+ * La frontiere est donc quelque part entre 55 % et 98 %, et la mesure ne la
+ * serre pas davantage : 0,8 s'y place. Elle est eprouvee des deux cotes -- la
+ * ligne 10 de la page 350, qui fait 92,7 % de la colonne, est imprimee a 100 %,
+ * donc le livre l'ETIRE ; et la ligne 15 de la page 604, qui fait 54,0 %, est
+ * imprimee a 54,1 %, donc le livre la laisse naturelle.
  */
 export const PART_REMPLIE = 0.8;
 
 /**
  * Le garde-fou contre une ligne qui ne pourrait pas tenir : la plus forte
  * compression REELLE du livre est celle de la ligne 3 de la page 414, 22,2856 em
- * pour une colonne de 15,0 em, soit 0,6731 (mesure faite sur les 8 820 lignes de
- * mots des 604 pages : c'est le minimum, les suivantes sont 0,7014 page 417 et
- * 0,7116 page 341). Le garde-fou est pose a 0,65, soit 3,4 % sous ce minimum,
- * pour qu'aucune page legitime ne puisse declencher une alerte a cause d'un
- * ecart de mesure, tout en attrapant une ligne reellement mal composee -- qui
- * demanderait, elle, bien davantage.
+ * pour une colonne de 16,15 em, soit 0,7247 (mesure faite sur les 8 820 lignes de
+ * mots des 604 pages : c'est le minimum). Le garde-fou est pose a 0,70, soit
+ * 3,4 % sous ce minimum, pour qu'aucune page legitime ne puisse declencher une
+ * alerte a cause d'un ecart de mesure, tout en attrapant une ligne reellement mal
+ * composee -- qui demanderait, elle, bien davantage.
+ *
+ * A la colonne juste, 43,4 % des lignes sont legerement comprimees et 56,3 %
+ * legerement etirees, pour un facteur moyen de 1,0008 : la police QCF V4 est
+ * dessinee pour la page qu'elle habille, le livre n'a donc que de petites
+ * retouches a faire. A la colonne fausse de 447 px, le facteur moyen tombait a
+ * 0,9298 et 97,1 % des lignes etaient comprimees -- l'application ecrasait donc
+ * tout le texte, et jusqu'a 32 % sur la page 414. C'est exactement le defaut
+ * signale.
  */
-export const COMPRESSION_MINIMALE = 0.65;
+export const COMPRESSION_MINIMALE = 0.70;
 
 export type PoseDeLigne={justify:'flex-start'|'center';facteur:number;depasse:boolean};
 
@@ -155,7 +198,7 @@ export function alignementDeLigne(page:number):string{
  * la presente, et un cadre ne retrecissait la zone de texte sans rien apporter
  * que la page imprimee ne porte pas deja. En revanche elle garde la FORME de la
  * page imprimee (622 x 917) et ses marges, parce que c'est ce qui place les
- * versets : la colonne du livre vaut 15,0 em, et c'est cette proportion-la, et
+ * versets : la colonne du livre vaut 16,15 em, et c'est cette proportion-la, et
  * non la largeur de l'ecran, qui decide de la taille de la lettre.
  */
 export function qcfV4Html(data:QcfV4Page,playingVerseId:number|null,difficultyIds:number[],sessionStart:number,sessionEnd:number){
@@ -208,7 +251,7 @@ function fitPage(){
   const page=document.getElementById('page'),lines=[...document.querySelectorAll('.line')];
   // 1. La page prend la FORME de la page imprimee (622 x 917), au plus grand qui
   //    tient dans la vue. Tout le reste en decoule : la taille de la lettre est
-  //    0,04793 fois la largeur de la page, donc la colonne fait toujours 15,0 em,
+  //    0,047910 fois la largeur de la page, donc la colonne fait toujours 16,15 em,
   //    comme dans le livre.
   const largeur=Math.min(innerWidth,innerHeight/${PAGE_RATIO.toFixed(6)});
   page.style.setProperty('--page-w',largeur+'px');

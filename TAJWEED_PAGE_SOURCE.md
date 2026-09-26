@@ -151,25 +151,32 @@ chaque manque est effectivement annoncé par cette voisine.
 
 ### Où le livre pose chaque ligne
 
-Mesure faite en lisant l'étendue de l'encre de chaque bande sur les **23 pages
-imprimées de page entière** dont on dispose
-(`_inspect/pages-imprimees/poser-les-lignes-courtes.py`) : les bandes tombent soit
-à **96,4-100,0 %** de la colonne (274 bandes), soit à **2,7-72,7 %** (23 bandes).
-La zone 73-96 % est **entièrement vide** : le livre ne laisse jamais une ligne
-entre les deux.
+Mesure faite en lisant l'étendue de l'encre de chaque bande sur les **20 pages
+imprimées de page entière** dont on dispose, **sans rogner la page**
+(`_inspect/pages-imprimees/largeur-du-texte.py` et
+`distribution-des-bandes.py`) : 291 bandes, dont **91,4 % entre 470 et 493 px**,
+soit **97,7-102,5 %** de la colonne de 481,3 px, et 8,6 % sous 265 px, soit moins
+de 56 %. La zone 55-98 % est **entièrement vide** — 0,4 % des bandes : le livre ne
+laisse jamais une ligne entre les deux.
 
-- **les lignes courtes sont CENTRÉES** : les 23 le sont, **0 est posée au bord
-  droit, 0 au bord gauche** ;
+> La sonde antérieure (`poser-les-lignes-courtes.py`) restreignait son examen à
+> `x = 0,14..0,86` de la largeur, puis annonçait « colonne x=87..533 = 447 px » :
+> elle lisait les bords de **sa propre fenêtre**, et toute ligne plus large était
+> rognée à 447 px et comptée « pleine à 100 % ». C'est de là que venait la
+> colonne trop étroite du moteur, et donc l'écrasement du texte signalé.
+
+- **les lignes courtes sont CENTRÉES** : **0 au bord droit, 0 au bord gauche** ;
 - **une fin de sourate n'est pas courte pour autant** : la page 350 n'a qu'une
   bande centrée, la basmala, et ses lignes 7, 10, 13 et 15 — à 96,5 %, 92,7 %,
-  98,7 % et 93,2 % de la colonne — sont imprimées pleines à 100 % ;
+  98,7 % et 93,2 % de l'ancienne colonne — sont imprimées pleines ;
 - **la page 1 fait exception** : Al-Fatiha y est centrée dans son médaillon.
 
 Le lecteur pose donc chaque ligne selon sa largeur mesurée : **remplie** si elle
 occupe au moins 80 % de la colonne, **centrée à sa largeur naturelle** sinon, et
 centrée d'emblée sur la page 1. Le seuil de 80 % tombe dans la zone vide mesurée
-— la plus longue ligne courte du livre fait 72,7 %, la plus courte ligne pleine
-96,4 % — donc aucune ligne réelle n'approche la frontière.
+— la plus courte ligne pleine du corpus fait 80,4 % de la colonne, la plus longue
+ligne courte 79,5 %, et l'imprimé n'a rien entre 55 % et 98 % — donc aucune ligne
+réelle n'approche la frontière.
 
 La pose ne dépend **que de la largeur** : la règle est une fonction pure qui ne
 reçoit que des nombres, embarquée dans la page par `poseDeLigne.toString()`, si
@@ -179,35 +186,54 @@ différence signalée sur la page 599.
 
 ### Comment le livre remplit une ligne
 
-Il la **met à l'échelle d'un seul tenant** ; il ne joue pas sur les espaces.
-Mesure faite mot à mot (`_inspect/tajweed2/mot-a-mot-imprime.py`), en comparant la
-largeur de chaque mot imprimé à la mise à l'échelle uniforme de la ligne et à ce
-qu'un simple resserrement des espaces prédirait :
+Il la **met à l'échelle d'un seul tenant** ; il ne joue pas sur les espaces. Les
+deux modèles se départagent sur la ligne 3 de la page 414, la plus comprimée du
+livre (22,2856 em pour une colonne de 16,15 em, facteur 0,7247), en prenant le mot
+de 3,8116 em à la position 24 :
 
-| mot | avance | mise à l'échelle | espaces resserrés | imprimé |
-|---|---|---|---|---|
-| page 414, ligne 3, pos. 24 | 3,8116 em | **76,5 px** | 93,9 px | **78 px** |
-| page 604, ligne 3, pos. 2 | 2,5180 em | **70,3 px** | — | **71 px** |
+| modèle | avance imprimée prédite | imprimé |
+|---|---|---|
+| mise à l'échelle uniforme : `3,8116 × 29,8 × 0,7247` | **82,3 px** | **78 px** |
+| espaces resserrés : `3,8116 × 29,8` | 113,6 px | 78 px |
 
-C'est ce qui décide du rendu : `transform: scaleX(colonne / largeur naturelle)`,
-origine au bord droit. Sur les **8 820 lignes de mots** des 604 pages, **8 547
-(96,9 %)** demandent plus que la colonne et sont condensées, 256 (2,9 %) sont
-étirées, et 17 (0,2 %) seulement restent courtes et centrées.
+L'écart qui reste (82,3 contre 78, soit 5,2 %) est celui des approches latérales :
+l'avance d'un mot est plus large que son encre. Le resserrement des espaces, lui,
+se trompe de 46 %. C'est ce qui décide du rendu :
+`transform: scaleX(colonne / largeur naturelle)`, origine au bord droit. Sur les **8 820 lignes de mots** des 604 pages, **3 828
+(43,4 %)** demandent plus que la colonne et sont condensées, 4 969 (56,3 %) sont
+légèrement étirées, et 23 (0,3 %) seulement restent courtes et centrées. Le
+facteur moyen vaut **1,0008** : la police QCF V4 est dessinée pour la page qu'elle
+habille, le livre n'a donc que de petites retouches à faire.
 
 La plus forte compression réelle du livre est la ligne 3 de la page 414 :
-**22,2856 em pour 15,0 em, soit 0,6731** ; les suivantes sont 0,7014 (page 417) et
-0,7116 (page 341). Le lecteur signale une ligne au-delà de **0,65**, soit 3,4 %
-sous ce minimum : une page du livre ne peut pas déclencher l'alerte, une ligne
-réellement mal composée le peut.
+**22,2856 em pour 16,15 em, soit 0,7247**. Le lecteur signale une ligne au-delà de
+**0,70**, soit 3,4 % sous ce minimum : une page du livre ne peut pas déclencher
+l'alerte, une ligne réellement mal composée le peut.
 
 ### La taille du texte : la proportion du livre
 
-Le livre ne change pas de taille d'une page à l'autre. **La colonne vaut 15,0 em**,
+Le livre ne change pas de taille d'une page à l'autre. **La colonne vaut 16,15 em**,
 et c'est cette proportion-là, non la largeur de l'écran, qui décide de la lettre :
-`0,719 / 15,0 = 0,047933` fois la largeur de la page — le même chiffre que
+`0,77374 / 16,15 = 0,047910` fois la largeur de la page — exactement
 `29,8 / 622 = 0,047910` mesuré sur le scan. Sur une page de 390 px : lettre de
-**18,69 px/em**, colonne de **280,4 px = 15,000 em**, pas des rangées de 1,81 em,
-marges latérales 0,1405 et verticales 0,0884, page au format 622 × 917.
+**18,69 px/em**, colonne de **301,7 px = 16,15 em**, pas des rangées de 1,81 em,
+marges latérales 0,11313 et verticales 0,0884, page au format 622 × 917.
+
+La colonne de 16,15 em est établie par quatre voies indépendantes, qui tombent
+toutes à 1,5 % près :
+
+- un **ajustement aux moindres carrés** de l'encre imprimée sur le modèle « mise à
+  l'échelle uniforme », sur les 256 lignes justifiées des 20 pages
+  (`_inspect/tajweed2/ajuster-la-colonne.py`) : **473,8 px = 15,91 em** ;
+- la **médiane des largeurs naturelles** du corpus, point où le livre n'aurait ni
+  à étirer ni à comprimer : **16,14 em** ;
+- le **facteur moyen de mise à l'échelle**, qui doit valoir 1 si la police est
+  dessinée pour la page : il vaut **1,0008** à 16,15 em, contre 0,9298 à
+  l'ancienne colonne de 15,0 em ;
+- la **superposition au scan** (`_inspect/tajweed2/dessiner-page-599.py`), qui
+  dessine la page avec les contours réels de la police : à 481,3 px le bord droit
+  de l'encre tombe à 2 px de l'imprimé et c'est le bord gauche qui manque — il
+  faudrait 487 px, soit **16,34 em**.
 
 Les 29,8 px/em sont établis par trois voies indépendantes :
 

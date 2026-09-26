@@ -3,12 +3,12 @@
     "name": "Apprendre le Coran",
     "slug": "quranhifz",
     "scheme": "coranmemoire",
-    "version": "0.9.15",
+    "version": "0.9.16",
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "ios": {"supportsTablet": true, "bundleIdentifier": "fr.quranhifz.app", "buildNumber": "27"},
-    "android": {"adaptiveIcon": {"foregroundImage": "./assets/android-icon-foreground.png", "backgroundImage": "./assets/android-icon-background.png", "backgroundColor": "#EABDD7"}, "package": "fr.quranhifz.app", "versionCode": 27, "softwareKeyboardLayoutMode": "resize", "permissions": ["SCHEDULE_EXACT_ALARM"]},
+    "ios": {"supportsTablet": true, "bundleIdentifier": "fr.quranhifz.app", "buildNumber": "28"},
+    "android": {"adaptiveIcon": {"foregroundImage": "./assets/android-icon-foreground.png", "backgroundImage": "./assets/android-icon-background.png", "backgroundColor": "#EABDD7"}, "package": "fr.quranhifz.app", "versionCode": 28, "softwareKeyboardLayoutMode": "resize", "permissions": ["SCHEDULE_EXACT_ALARM"]},
     "extra": {},
     "plugins": ["expo-sqlite", ["expo-notifications", {"defaultChannel": "messages", "color": "#B39559"}], ["expo-audio", {"recordAudioAndroid": true, "microphonePermission": "Autoriser Apprendre le Coran à enregistrer votre récitation pour le suivi de votre apprentissage.", "enableBackgroundPlayback": true}], ["expo-image-picker", {"photosPermission": "Autoriser Apprendre le Coran à choisir une photo de profil pour vos amis.", "cameraPermission": false}]]
   }
