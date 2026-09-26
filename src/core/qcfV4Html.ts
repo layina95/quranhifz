@@ -107,13 +107,16 @@ function fitPage(){
   const marge=innerWidth*0.022;
   const slotHeight=(page.clientHeight-2*marge)/${data.rowCount};
   // Mesure des 604 pages, avances reelles de chaque police (sonde
-  // _inspect/tajweed2/analyser-mesures.mjs) : sur 390 px de large, la ligne la
-  // plus large demande entre 16,8 px (page 414) et 28,2 px (page 1, ligne 5) ;
-  // sur 320 px, 13,8 px au minimum. Le plafond suit donc la largeur, et le
-  // plancher est une taille de lecture fixe -- surtout pas un pourcentage du
-  // plafond : a 88 % du plafond il valait 25 px, et 602 pages sur 604 ne
-  // pouvaient pas tenir, ce qui affichait « la ligne X ne tient pas » a la place
-  // de la page.
+  // _inspect/tajweed2/analyser-mesures.mjs) : chaque page a sa propre echelle --
+  // les lignes de la page 7 font 16,2 a 17,4 em, celles de la page 549 15,1 --
+  // donc c'est la ligne la plus large DE LA PAGE qui donne sa taille. Sur 390 px,
+  // elle demande 28,00 px pour la page 1 (13,3456 em, ligne 4) et 16,77 px pour
+  // la page 414, ligne 3 (22,2856 em, la plus large du livre) ; sur 320 px,
+  // 13,76 px au minimum. Le plafond suit donc la largeur -- 0,074 laisse 3,09 %
+  // au-dessus du 0,07178 qu'exige la page la plus etroite -- et le plancher est
+  // une taille de lecture fixe, surtout pas un pourcentage du plafond : a 88 %
+  // du plafond il valait 25 px, et 602 pages sur 604 ne pouvaient pas tenir, ce
+  // qui affichait « la ligne X ne tient pas » a la place de la page.
   const plafond=Math.floor(Math.min(32,Math.ceil(innerWidth*.074),slotHeight/1.45));
   const PLANCHER=12;
   // Pendant la recherche, chaque ligne est posee a sa largeur NATURELLE : une

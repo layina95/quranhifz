@@ -343,10 +343,13 @@ test('un bandeau sans ligne libre est refuse plutot que superpose',()=>{
 });
 
 // La taille du texte est choisie par mesure, pas a l'oeil. Sonde
-// _inspect/tajweed2/lignes-604.mjs, avances reelles des 604 polices : sur 390 px
-// de large, la ligne la plus large demande entre 16,8 px (page 414) et 28,2 px
-// (page 1, ligne 5) ; sur 320 px, 13,8 px au minimum. Le pire cas demande
-// 0,958/13,244 = 0,07233 fois la largeur de l'ecran.
+// _inspect/tajweed2/lignes-604.mjs, avances reelles des 604 polices : chaque page
+// a sa propre echelle, donc c'est la ligne la plus large DE LA PAGE qui donne sa
+// taille. Sur 390 px elle demande 28,00 px pour la page 1 (13,3456 em, ligne 4)
+// et 16,77 px pour la page 414, ligne 3 (22,2856 em, la plus large du livre) ;
+// sur 320 px, 13,76 px au minimum. La page la plus etroite demande
+// 0,958/13,3456 = 0,07178 fois la largeur de l'ecran, et le code retient 0,074,
+// soit 3,09 % de marge.
 
 test('le plancher de taille laisse tenir la page la plus dense',()=>{
   const html=qcfV4Html(parseQcfV4Page(3,page),null,[],0,0);
@@ -362,7 +365,7 @@ test('le plafond de taille laisse la page la plus large remplir la largeur',()=>
   const html=qcfV4Html(parseQcfV4Page(3,page),null,[],0,0);
   const plafond=/Math\.min\((\d+),Math\.ceil\(innerWidth\*([\d.]+)\)/.exec(html);
   assert.ok(plafond,'le plafond doit suivre la largeur de l ecran');
-  assert.ok(Number(plafond[2])>=0.074,`un plafond de ${plafond[2]} fois la largeur ne laisserait pas la page 2 remplir ses lignes`);
+  assert.ok(Number(plafond[2])>=0.074,`un plafond de ${plafond[2]} fois la largeur ne laisserait pas la page 1 remplir ses lignes`);
 });
 
 test('le repli de taille ne deborde pas avant le calcul de mise en page',()=>{

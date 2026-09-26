@@ -184,17 +184,23 @@ plus rien de la place que le texte demande.
 ### La taille du texte, mesurée et non choisie
 
 Les avances réelles des 604 polices ont été décodées hors ligne
-(`_inspect/tajweed2/`). La ligne la plus large demande, selon la page, de
-**16,8 px** (page 414) à **28,2 px** (page 1, ligne 5) sur un écran de 390 px, et
-**13,8 px** au minimum sur un écran de 320 px.
+(`_inspect/tajweed2/`). Elles montrent que **chaque page a sa propre échelle** :
+les quinze lignes de la page 7 totalisent 16,2 à 17,4 em, celles de la page 549
+15,1 em, celles de la page 1 de 5,9 à 13,3 em. C'est donc la ligne la plus large
+**de la page** qui donne sa taille, et non une taille unique pour tout le livre.
+Sur un écran de 390 px, cette ligne demande **28,00 px** pour la page 1
+(13,3456 em, ligne 4, la page la plus étroite) et **16,77 px** pour la page 414,
+ligne 3 (22,2856 em, la ligne la plus large du livre) ; sur un écran de 320 px,
+**13,76 px** au minimum.
 
 L'ancien plancher valait `max(19, 88 % du plafond)` = **25 px** : **602 pages sur
 604 ne pouvaient pas tenir**, et affichaient « la ligne X ne tient pas » à la
 place de la page. Le plancher est maintenant une taille de lecture fixe de
 **12 px**, et le plafond suit la largeur de l'écran :
 `min(32, ⌈largeur × 0,074⌉, hauteur de rangée / 1,45)`. Le coefficient 0,074 est
-mesuré : le pire cas demande `0,958 / 13,244 em = 0,07233` fois la largeur, soit
-**2,3 % de marge**, et aucune page n'est refusée de 320 à 430 px de large.
+mesuré : la page la plus étroite demande `0,958 / 13,3456 em = 0,07178` fois la
+largeur, soit **3,09 % de marge**, et aucune page n'est refusée de 320 à 430 px de
+large — la page la plus large y demande 13,76 px, au-dessus du plancher de 12.
 
 
 Chaque mot porte l'identifiant du verset Hafs : le surlignage pendant l'audio et
