@@ -1,5 +1,6 @@
 import { expand, hizbs, juzs, normalizeRanges, pageOf, pageRange, quarters, halves, Range, surahAt, surahs, totalVolume, volume, weights } from './quran';
 import { verifiedToumouns } from './toumoun';
+import { MushafMode } from './tajweedMode';
 
 export type Mastery = 'perfect' | 'review' | 'learning';
 export type Pace = 'verse1' | 'verse2' | 'verse3' | 'verse4' | 'verse5' | 'halfPage' | 'page' | 'page2' | 'toumoun' | 'quarter' | 'halfHizb' | 'hizb';
@@ -14,9 +15,10 @@ export type PersonalProfile = { sex: 'Homme' | 'Femme'; firstName: string };
 export type AppTheme = 'classic' | 'feminine' | 'lilac' | 'night';
 export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; corrections?: boolean; adminMessages?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
 // `tajweed` is kept as the stored key so existing preferences continue to work.
-// Le mode `tajweedPages` (Moushaf Tajweed) a ete retire ; App.tsx ramene toute
-// valeur stockee a `traditional`, pour ne pas perdre une preference existante.
-export type ReaderPreferences = { mushaf:'traditional'|'tajweed'; followAudio:boolean };
+// `tajweedPages` (Coran Tajweed) est de nouveau propose. C'est core/tajweedMode.ts
+// qui decide si le mode existe et qui ramene toute preference stockee a un mode
+// reellement disponible.
+export type ReaderPreferences = { mushaf:MushafMode; followAudio:boolean };
 export type ReviewSettings = { enabled:boolean; cycleDays:7|14|21|30; resumedAt?:string };
 export type ReviewGrade = 'perfect'|'hesitant'|'rework';
 export type ReviewEvent = { id:string; date:string; start:number; end:number; category:'recent'|'habitual'|'priority'; grade:ReviewGrade };

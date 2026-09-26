@@ -2,14 +2,16 @@ import React from 'react';
 import {Image,Pressable,Text,View} from 'react-native';
 import {colors,Label} from './ui/theme';
 import {mushafImages} from './data/mushafImages';
+import {QcfV4MushafPage} from './QcfV4MushafPage';
+import {MushafMode} from './core/tajweedMode';
 import boundsRaw from './data/bounds.json';
 import {frenchVerse,lineHighlightRect,tajweedColor,tajweedSpans,verseAtImagePoint} from './core/readerData';
 import {pageRange,Range,surahs,verseAt,verseId} from './core/quran';
 
-type Props={page:number;width:number;height:number;mode:'traditional'|'tajweed';language:'ar'|'fr';playingVerseId:number|null;difficultyIds?:number[];sessionRange:Range;showSession:boolean;masked:boolean;revealed:number|null;onVerseLongPress:(id:number)=>void;onBlankLongPress:()=>void;onTap:()=>void};
+type Props={page:number;width:number;height:number;mode:MushafMode;language:'ar'|'fr';playingVerseId:number|null;difficultyIds?:number[];sessionRange:Range;showSession:boolean;masked:boolean;revealed:number|null;onVerseLongPress:(id:number)=>void;onBlankLongPress:()=>void;onTap:()=>void;onRetourAuMoushaf:()=>void};
 const bounds=boundsRaw as Record<string,number[][]>;
 
-export function MushafPage({page,width,height,mode,language,playingVerseId,difficultyIds=[],sessionRange,showSession,masked,revealed,onVerseLongPress,onBlankLongPress,onTap}:Props){
+export function MushafPage({page,width,height,mode,language,playingVerseId,difficultyIds=[],sessionRange,showSession,masked,revealed,onVerseLongPress,onBlankLongPress,onTap,onRetourAuMoushaf}:Props){
   const rows=bounds[String(page)]??[];
   const range=pageRange(page);
   const ids=Array.from({length:range.end-range.start+1},(_,index)=>range.start+index);
@@ -24,6 +26,7 @@ export function MushafPage({page,width,height,mode,language,playingVerseId,diffi
     </Pressable>;})}
     {language==='fr'?<Label style={{fontSize:11,color:colors.muted,marginTop:8}}>Traduction du sens : Rachid Maach · QuranEnc</Label>:<Label style={{fontSize:11,color:colors.muted,marginTop:8}}>Tajweed : cpfair, CC BY 4.0 · texte Hafs Tanzil 2017</Label>}
   </View>;
+  if(mode==='tajweedPages')return <QcfV4MushafPage page={page} width={width} height={height} playingVerseId={playingVerseId} difficultyIds={difficultyIds} sessionStart={showSession?sessionRange.start:0} sessionEnd={showSession?sessionRange.end:0} onVerseLongPress={onVerseLongPress} onTap={onTap} onRetourAuMoushaf={onRetourAuMoushaf} />;
   return <Pressable onPress={onTap} onLongPress={event=>{const {locationX,locationY}=event.nativeEvent;const id=verseAtImagePoint(rows,locationX-2,locationY-2,width-4,height-4);if(id===null)onBlankLongPress();else onVerseLongPress(id);}} delayLongPress={450} style={{width,height,backgroundColor:'white',borderWidth:2,borderColor:colors.beige,borderRadius:9,overflow:'hidden',shadowColor:'#000',shadowOpacity:0.12,shadowRadius:10}}>
     <Image source={mushafImages[page]} style={{width:width-4,height:height-4}} resizeMode="contain" />
     {rows.filter(row=>{const id=verseId(row[0],row[1]);return id!==null&&(verseSelected(id)||difficultyIds.includes(id));}).map((row,index)=>{const id=verseId(row[0],row[1])!,active=id===playingVerseId,difficult=difficultyIds.includes(id),box=lineHighlightRect(row,width,height);return <View key={index} pointerEvents="none" style={{position:'absolute',...box,backgroundColor:difficult?'#E85B5B':active?colors.highlight:colors.gold,opacity:difficult?0.18:active?1:0.11,borderRadius:6}} />;})}
