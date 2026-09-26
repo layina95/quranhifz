@@ -269,11 +269,11 @@ function fitPage(){
   //    tenant si elle occupe au moins PART_REMPLIE de la colonne, centree a sa
   //    largeur naturelle sinon. Le livre REMPLIT ses lignes en les etirant ou en
   //    les condensant, et non en jouant sur les espaces : sur les 8 820 lignes de
-  //    mots des 604 pages, 96,9 % demandent plus que la colonne et sont
-  //    condensees, 2,9 % demandent entre 80 et 100 % et sont etirees (la ligne 10
-  //    de la page 350, a 92,7 %, est imprimee a 100 %), et 0,2 % seulement
-  //    restent courtes et centrees. La regle elle-meme est poseDeLigne(),
-  //    embarquee ci-dessus telle quelle.
+  //    mots des 604 pages, 43,4 % demandent plus que la colonne et sont
+  //    condensees, 56,3 % demandent entre 80 et 100 % et sont legerement
+  //    etirees (la ligne 10 de la page 350, a 92,7 %, est imprimee a 100 %), et
+  //    23 lignes seulement (0,3 %) restent courtes et centrees. La regle
+  //    elle-meme est poseDeLigne(), embarquee ci-dessus telle quelle.
   let debordement=null;
   lines.forEach((line,index)=>{
     if(line.dataset.fixe)return;
