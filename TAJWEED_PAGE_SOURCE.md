@@ -1,5 +1,10 @@
 # Coran Tajweed : sources, droits et limites techniques
 
+> **Ce mode est retiré des menus depuis le 26 septembre 2026**, à la demande du
+> propriétaire : `coranTajweedActif = false` dans `src/core/tajweedMode.ts`. Le
+> code et les mesures de ce document restent valables et servent de référence
+> pour le rétablir ou pour tout autre rendu de la page imprimée.
+
 Le mode `tajweedPages` — présenté sous le nom **Coran Tajweed** — affiche la page
 du Moushaf telle qu'elle est imprimée. Chaque mot est dessiné par la **police
 couleur QCF V4** de Quran Foundation : la mise en page et les couleurs des règles

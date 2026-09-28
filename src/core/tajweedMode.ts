@@ -13,8 +13,14 @@
  * lecteur, et une preference deja enregistree revient au Moushaf de Medine.
  * La marche a suivre complete, y compris l'effacement du code, est decrite dans
  * `docs/retirer-coran-tajweed.md`.
+ *
+ * ETAT : la lecture est RETIREE (valeur `false`), sur la demande du proprietaire.
+ * Le code du mode est conserve : remettre `true` suffit a le remettre dans les
+ * deux menus. La preuve que cet interrupteur gouverne seul les menus est
+ * `_inspect/falsifier-coran-tajweed.mjs`, qui force la valeur opposee dans une
+ * copie du module et exige que les menus suivent.
  */
-export const coranTajweedActif = true;
+export const coranTajweedActif = false;
 
 /**
  * Les presentations arabes du lecteur.

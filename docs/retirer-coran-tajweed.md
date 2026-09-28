@@ -24,9 +24,20 @@ Ce que cela change, et rien d'autre :
   notifications ne sont pas touchés ;
 - **rien à faire côté Supabase** : ni base, ni secrets, ni fonction Edge.
 
-C'est la garantie éprouvée par `falsifier-coran-tajweed.mjs` : le drapeau est
-basculé dans une copie du module, recompilé, et le mode doit alors quitter les
-menus et la préférence stockée retomber sur le Moushaf de Médine.
+C'est la garantie éprouvée par `_inspect/falsifier-coran-tajweed.mjs` — **hors du
+dépôt**, comme toutes les sondes. Il ne lit pas la valeur en place, ce qui serait
+vert par construction : il **recopie** le module, y force la valeur **opposée**,
+le recompile, et exige que les menus suivent. Le même banc est donc probant que
+le mode soit actif ou retiré, et il se falsifie lui-même en retirant la garde
+`coranTajweedActif&&` d'une copie de `App.tsx` — le contrôle doit alors rougir.
+
+```bash
+node _inspect/falsifier-coran-tajweed.mjs   # 23 / 23 verts attendus
+```
+
+> **État au 26 septembre 2026 : la lecture est RETIRÉE** (`coranTajweedActif = false`),
+> à la demande du propriétaire. Le code du mode est conservé : remettre `true`
+> suffit à le rétablir dans les deux menus, sans rien réécrire d'autre.
 
 ## 2. Effacer
 
