@@ -2,7 +2,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const {fonctionAbsenteDuServeur,messageApiPublique,messageDeRefus,ouvertureDeSourate,parseQcfV4Page,reunirReponses,urlApiPublique}=require('./build/core/qcfV4.js');
 const {pageRange,verseId}=require('./build/core/quran.js');
-const {qcfV4Html,poseDeLigne,PART_REMPLIE,COMPRESSION_MINIMALE,TAILLE_PAGE,COLONNE_EM,MARGE_LATERALE,PAGE_RATIO}=require('./build/core/qcfV4Html.js');
+const {qcfV4Html,poseDeLigne,PART_REMPLIE,COMPRESSION_MINIMALE,TAILLE_PAGE,COLONNE_EM,MARGE_LATERALE,MARGE_VERTICALE,PAS_EM,PAGE_RATIO}=require('./build/core/qcfV4Html.js');
 const {ayahMarkerHtml,easternArabicNumber}=require('./build/core/ayahMarker.js');
 
 const page={pagination:{total_pages:1},verses:[
@@ -390,9 +390,44 @@ test('la taille est une proportion, jamais une valeur en pixels',()=>{
   assert.doesNotMatch(html,/--word-size:\d+px/);
   assert.match(html,/--word-size:calc\(var\(--page-w\)\*0\.047910\)/);
   // La page garde la FORME du papier (622 x 917) et ses marges, parce que c'est
-  // cela qui place les versets.
-  assert.match(html,/--page-h:calc\(100vw\*0\.6783\)/);
+  // cela qui place les versets. 622 / 917 = 0,6782988 : c'est une proportion
+  // largeur/hauteur, donc la hauteur DIVISE par elle. La multiplier -- ce que le
+  // code a fait -- donnait une page de 390 x 264 px dans une vue de 390 x 844,
+  // plus large que haute, avec quinze rangees ecrasees dedans.
+  assert.match(html,/--page-h:calc\(100vw\/0\.678299\)/);
+  assert.doesNotMatch(html,/--page-h:calc\(100vw\*/,`la hauteur ne doit pas multiplier la proportion : ${/--page-h:[^;]*/.exec(html)?.[0]}`);
   assert.match(html,/padding:calc\(var\(--page-w\)\*0\.0884\) calc\(var\(--page-w\)\*0\.11313\)/);
+});
+
+test('la page est plus haute que large, comme le papier',()=>{
+  const html=qcfV4Html(parseQcfV4Page(3,page),null,[],0,0);
+  // La forme est dite deux fois -- une fois par le CSS, une fois par fitPage() --
+  // et les deux doivent dire la meme chose. C'est leur desaccord qui a produit le
+  // defaut : fitPage() divisait pour trouver la largeur, puis multipliait pour
+  // trouver la hauteur.
+  const css=/--page-h:calc\(100vw\/([\d.]+)\)/.exec(html)?.[1];
+  const script=/setProperty\('--page-h',\(largeur\/([\d.]+)\)/.exec(html)?.[1];
+  assert.equal(css,script,`le CSS et le script doivent diviser par la meme proportion (${css} contre ${script})`);
+  assert.equal(css,'0.678299');
+  // Hauteur / largeur = 917 / 622 = 1,4743 : la page est 47 % plus haute que large.
+  const hauteurSurLargeur=1/Number(css);
+  assert.ok(Math.abs(hauteurSurLargeur-917/622)<1e-6,`hauteur/largeur = ${hauteurSurLargeur}, le papier dit ${917/622}`);
+  assert.ok(hauteurSurLargeur>1,'une page du Moushaf est plus haute que large');
+  // La largeur choisie doit faire TENIR la hauteur : la hauteur vaut
+  // largeur / proportion, donc la condition s'ecrit largeur <= innerHeight x
+  // proportion. Diviser la ou il faut multiplier laissait la page deborder d'une
+  // vue courte -- mesure : 390 x 430 perdait 145 px, 300 x 360 en perdait 82 --
+  // et a la taille du livre rien ne defile, donc le bas de la page etait rogne en
+  // silence.
+  assert.match(html,/Math\.min\(innerWidth,innerHeight\*0\.678299\)/);
+  assert.doesNotMatch(html,/innerHeight\/0\.678299/,`la hauteur de vue ne doit pas diviser la proportion : ${/Math\.min\([^)]*\)/.exec(html)?.[0]}`);
+  // Et les quinze rangees tiennent entre les marges : 15 x 1,81 em de lettre, dans
+  // la hauteur moins deux marges de 0,0884 largeur. Ecart mesure : -0,25 %, c'est
+  // ce qui etablit que 622 x 917 est bien la forme du papier et non un recadrage.
+  const lettre=TAILLE_PAGE;
+  const besoin=15*PAS_EM*lettre;
+  const place=hauteurSurLargeur-2*MARGE_VERTICALE;
+  assert.ok(Math.abs((place-besoin)/besoin)<0.01,`les quinze rangees doivent tenir entre les marges : besoin ${besoin.toFixed(4)}, place ${place.toFixed(4)}`);
 });
 
 // --- La pose des lignes dans la largeur -------------------------------------
@@ -525,6 +560,6 @@ test('la loupe agrandit la page sans toucher aux proportions du livre',()=>{
   assert.equal(lettre(loupe),'0.047910','la lettre garde la proportion mesuree sur le scan');
   assert.match(nue,/overflow:hidden/,'a la taille du livre, la page tient sans defiler');
   assert.match(loupe,/overflow:auto/,'agrandie, la page doit se laisser defiler au lieu d’etre rognee');
-  assert.ok(loupe.includes(`innerHeight/${PAGE_RATIO.toFixed(6)})*1.8`),'la largeur de page doit etre multipliee par la loupe');
+  assert.ok(loupe.includes(`innerHeight*${PAGE_RATIO.toFixed(6)})*1.8`),'la largeur de page doit etre multipliee par la loupe');
   assert.equal(nue,qcfV4Html(p3,null,[],0,0,1),'la loupe par defaut est exactement la proportion du livre');
 });

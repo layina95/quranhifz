@@ -19,7 +19,8 @@ Elle agrandit la page entière d'un seul facteur : la lettre reste 0,047910 de l
 largeur de page, donc la colonne garde ses 16,15 em et la place des versets sur la
 page ne bouge pas. Une page agrandie dépasse la vue : le document défile, et le
 cadre CSS est choisi pour que **les deux bords restent atteignables** — voir
-`_inspect/coran-test/eprouver-le-cadre.mjs` et `eprouver-la-loupe.mjs`.
+`_inspect/coran-test/eprouver-le-cadre.mjs`, `eprouver-la-loupe.mjs` et
+`eprouver-la-page-tient-dans-la-vue.mjs`.
 
 Les deux autres présentations restent distinctes. Le mode `tajweed`, appelé
 **Lecture simplifiée**, est un rendu verset par verset à partir des annotations
@@ -270,6 +271,44 @@ limites du moushaf existant » et « la ligne X ne tient pas sans réduire le te
 Elle rendait le texte **plus grand que le livre** sur la plupart des pages — sur un
 écran de 390 px, 28,00 px/em pour la page 1, 21,55 pour la page 599, contre 18,69
 pour la proportion du livre — ce qui est la « police trop grande » signalée.
+
+### La forme de la page : 622 × 917, et non le recadrage des pages livrées
+
+La page porte la **forme du papier**, 622 × 917 : sa hauteur vaut **largeur ÷
+0,678298**, et non largeur × 0,678298. Cette proportion n'est pas un choix, c'est
+celle où la composition boucle. Les marges valent 0,11313 de la largeur de chaque
+côté et 0,0884 en haut et en bas, la colonne 16,15 em, le pas 1,81 em, et la page
+porte quinze rangées : sur cette forme, les quinze rangées demandent **1,3007
+largeur** et la place entre les marges en offre **1,2975**, soit **−0,25 %**. Sur la
+proportion des pages livrées (`assets/mushaf/`, 1920 × 3106 = 1,6177), la même place
+en offrirait 1,4409, soit **+10,78 %** : le texte flotterait.
+
+Ces pages livrées sont la **même page recadrée plus serré** — mesure faite
+(`_inspect/pages-imprimees/geometrie-reelle.py`) : le scan à ×3,70, moins 150 à
+170 px de marge de chaque côté. Leur proportion n'est donc pas celle du papier, et
+c'est celle du papier qui place les versets.
+
+**Défaut corrigé le 28 septembre 2026.** La hauteur était calculée en *multipliant*
+par cette proportion au lieu de diviser, dans le CSS comme dans `fitPage()`. Sur un
+téléphone, la page mesurait **390 × 264 px** dans une vue de 390 × 844 : plus large
+que haute, quinze rangées écrasées à **0,70 em de pas** au lieu de 1,81, et 290 px
+de vide au-dessus comme au-dessous. Un quatrième endroit portait la même inversion —
+le choix de la plus grande page qui tient dans la vue (`innerHeight × PAGE_RATIO`, et
+non `÷`) : invisible sur une vue haute, il rognait 145 px sur une vue de 390 × 430,
+et à la taille du livre rien ne défile.
+
+Le banc `eprouver-la-loupe.mjs` **sortait vert** sur la page paysage : il vérifiait
+que la page tient en largeur et qu'elle est centrée, jamais sa forme. Il mesure
+désormais la forme elle-même et le pas des rangées en em — **1,8052 em** contre
+1,81, la fermeture de toute la géométrie. Un second banc,
+`eprouver-la-page-tient-dans-la-vue.mjs`, éprouve la contenance sur cinq vues, dont
+deux courtes. Les deux sont falsifiés par `falsifier-les-controles-du-rendu.mjs` :
+la mutation du défaut livré fait bien rougir la forme (390 × 264,53 px, pas
+0,6974 em), et celle de la largeur ne fait rougir que les vues courtes.
+
+**Rien de la taille n'a bougé** : `TAILLE_PAGE`, `COLONNE_EM`, `MARGE_LATERALE`,
+`MARGE_VERTICALE`, `PAS_EM` sont inchangés, et la lettre reste 0,047910 de la
+largeur de page. Seule la **forme** de la page a été remise à l'endroit.
 
 
 Chaque mot porte l'identifiant du verset Hafs : le surlignage pendant l'audio et

@@ -63,6 +63,34 @@ function glyph(code:string){return code.replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi
  * de la page 604, que le livre n'ajuste pas, sont imprimees a leur largeur
  * naturelle a 0,2 % pres (265 px mesurees contre 265,2 et 265,5 attendues).
  */
+
+/**
+ * La FORME de la page imprimee : sa largeur divisee par sa hauteur, 622 / 917
+ * = 0,6783. C'est une proportion largeur/hauteur, donc la hauteur d'une page
+ * vaut largeur / PAGE_RATIO -- et non largeur x PAGE_RATIO.
+ *
+ * Cette forme n'est pas un choix : c'est celle ou la composition du livre
+ * boucle. Les marges valent 0,11313 de la largeur de chaque cote et 0,0884 en
+ * haut et en bas, la colonne 16,15 em, le pas 1,81 em, et la page porte quinze
+ * rangees. Sur cette proportion, les quinze rangees demandent 1,3007 largeur et
+ * la place entre les marges en offre 1,2975 : elles bouclent a 0,25 % pres. Sur
+ * la proportion des pages livrees (1920 x 3106, soit 1,6177), la meme place en
+ * offrirait 1,4409, soit 10,78 % de trop, et le texte flotterait.
+ *
+ * Les pages de assets/mushaf/ (1920 x 3106, 0,6182) sont la MEME page, recadree
+ * plus serre : mesure faite (_inspect/pages-imprimees/geometrie-reelle.py), le
+ * scan a 3,70 fois, moins 150 a 170 px de marge de chaque cote. Leur proportion
+ * n'est donc pas celle du papier, et c'est celle du papier qui place les
+ * versets.
+ *
+ * ATTENTION -- la hauteur a d'abord ete calculee en MULTIPLIANT par cette
+ * proportion au lieu de diviser, dans le CSS comme dans fitPage(). La page
+ * mesurait alors 390 x 264 px dans une vue de 390 x 844 : plus large que haute,
+ * quinze rangees ecrasees dans 264 px, et 290 px de vide au-dessus comme
+ * au-dessous. C'est le defaut signale sur telephone. Le banc de la loupe ne l'a
+ * pas vu -- il verifiait que la page tient en largeur, jamais sa forme -- et il
+ * a donc recu un controle de forme (eprouver-la-loupe.mjs).
+ */
 export const PAGE_RATIO = 622 / 917;
 export const MARGE_LATERALE = 0.11313;
 export const MARGE_VERTICALE = 0.0884;
@@ -229,7 +257,7 @@ export function qcfV4Html(data:QcfV4Page,playingVerseId:number|null,difficultyId
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#fffdf7;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 html{overflow:${zoom>1?'auto':'hidden'}}
 body{overflow:visible}
-#page{margin:0 auto;--page-w:100vw;--page-h:calc(100vw*${PAGE_RATIO.toFixed(4)});width:var(--page-w);height:var(--page-h);padding:calc(var(--page-w)*${MARGE_VERTICALE}) calc(var(--page-w)*${MARGE_LATERALE});display:grid;grid-template-rows:repeat(${data.rowCount},minmax(0,1fr));align-items:center;overflow:visible;--word-size:calc(var(--page-w)*${TAILLE_PAGE.toFixed(6)})}
+#page{margin:0 auto;--page-w:100vw;--page-h:calc(100vw/${PAGE_RATIO.toFixed(6)});width:var(--page-w);height:var(--page-h);padding:calc(var(--page-w)*${MARGE_VERTICALE}) calc(var(--page-w)*${MARGE_LATERALE});display:grid;grid-template-rows:repeat(${data.rowCount},minmax(0,1fr));align-items:center;overflow:visible;--word-size:calc(var(--page-w)*${TAILLE_PAGE.toFixed(6)})}
 .mushaf-row{grid-column:1;min-width:0;min-height:0;max-width:100%;width:100%;align-self:stretch}
 .line{display:flex;align-items:center;white-space:nowrap;direction:rtl;gap:0;font-family:qcf;font-size:var(--word-size);line-height:1.45;overflow:visible;transform-origin:right center}
 .word{display:inline-block;position:relative;border-radius:4px;flex-shrink:0;white-space:nowrap}
@@ -262,9 +290,18 @@ function fitPage(){
   //    decoule : la taille de la lettre est 0,047910 fois la largeur de la page,
   //    donc la colonne fait toujours 16,15 em, comme dans le livre -- la loupe
   //    n'est pas un changement de composition.
-  const largeur=Math.min(innerWidth,innerHeight/${PAGE_RATIO.toFixed(6)})*${zoom};
+  //
+  //    Les DEUX termes se multiplient par la proportion largeur/hauteur, et
+  //    aucun ne divise : la hauteur vaut largeur / PAGE_RATIO, donc « la hauteur
+  //    tient dans la vue » s'ecrit largeur <= innerHeight x PAGE_RATIO, et la
+  //    hauteur posee vaut largeur / PAGE_RATIO. Mesure faite
+  //    (diagnostiquer-la-page-qui-deborde.mjs) : avec une division dans le
+  //    premier terme, la page debordait de la vue sur 2 des 5 vues eprouvees --
+  //    390 x 430 perdait 145 px, 300 x 360 en perdait 82 -- et rien ne defile a
+  //    la taille du livre.
+  const largeur=Math.min(innerWidth,innerHeight*${PAGE_RATIO.toFixed(6)})*${zoom};
   page.style.setProperty('--page-w',largeur+'px');
-  page.style.setProperty('--page-h',(largeur*${PAGE_RATIO.toFixed(6)})+'px');
+  page.style.setProperty('--page-h',(largeur/${PAGE_RATIO.toFixed(6)})+'px');
   // 1bis. Le centrage vertical est CALCULE ici, et non confie a un align-items.
   //    Mesure faite dans Chrome sur sept cadres CSS (eprouver-le-cadre.mjs) : le
   //    cadre qui centre par flexbox laisse le bord GAUCHE de la page hors de la
@@ -273,7 +310,7 @@ function fitPage(){
   //    inatteignable. Le cadre en bloc, lui, garde tout mais ne centre pas. Une
   //    marge haute explicite donne les deux : elle centre quand la page tient, et
   //    vaut 0 sinon -- le haut reste atteignable.
-  page.style.marginTop=Math.max(0,Math.round((innerHeight-largeur*${PAGE_RATIO.toFixed(6)})/2))+'px';
+  page.style.marginTop=Math.max(0,Math.round((innerHeight-largeur/${PAGE_RATIO.toFixed(6)})/2))+'px';
   const colonne=largeur*(1-2*${MARGE_LATERALE});
   // 2. On repart des poses nues : mesurer une ligne deja comprimee donnerait la
   //    largeur d'apres transformation, et deux passages de suite comprimeraient
