@@ -90,6 +90,14 @@ function glyph(code:string){return code.replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi
  * au-dessous. C'est le defaut signale sur telephone. Le banc de la loupe ne l'a
  * pas vu -- il verifiait que la page tient en largeur, jamais sa forme -- et il
  * a donc recu un controle de forme (eprouver-la-loupe.mjs).
+ *
+ * La MEME inversion se cachait dans la LARGEUR : la plus grande page qui tient
+ * dans la vue vaut min(innerWidth, innerHeight x PAGE_RATIO), et le code
+ * divisait. Sur une vue haute les deux formules se confondent -- c'est
+ * innerWidth qui gouverne -- donc ce defaut-la ne se voit que sur une vue
+ * COURTE : la page y debordait de 145 px sur 390 x 430, et rien ne defile a la
+ * taille du livre. Un second banc l'eprouve sur cinq vues, dont deux courtes
+ * (eprouver-la-page-tient-dans-la-vue.mjs).
  */
 export const PAGE_RATIO = 622 / 917;
 export const MARGE_LATERALE = 0.11313;
@@ -295,7 +303,7 @@ function fitPage(){
   //    aucun ne divise : la hauteur vaut largeur / PAGE_RATIO, donc « la hauteur
   //    tient dans la vue » s'ecrit largeur <= innerHeight x PAGE_RATIO, et la
   //    hauteur posee vaut largeur / PAGE_RATIO. Mesure faite
-  //    (diagnostiquer-la-page-qui-deborde.mjs) : avec une division dans le
+  //    (eprouver-la-page-tient-dans-la-vue.mjs) : avec une division dans le
   //    premier terme, la page debordait de la vue sur 2 des 5 vues eprouvees --
   //    390 x 430 perdait 145 px, 300 x 360 en perdait 82 -- et rien ne defile a
   //    la taille du livre.
