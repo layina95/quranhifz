@@ -1,15 +1,25 @@
-# Coran Tajweed : sources, droits et limites techniques
+# Coran Test : sources, droits et limites techniques
 
-> **Ce mode est retiré des menus depuis le 26 septembre 2026**, à la demande du
-> propriétaire : `coranTajweedActif = false` dans `src/core/tajweedMode.ts`. Le
-> code et les mesures de ce document restent valables et servent de référence
-> pour le rétablir ou pour tout autre rendu de la page imprimée.
+> **Ce mode s'appelle « Coran Test » depuis le 26 septembre 2026.** Il avait été
+> retiré des menus le matin sous le nom « Coran Tajweed », puis remis le même jour
+> à la demande du propriétaire, sous ce nouveau nom et **à côté** du Moushaf de
+> Médine, qu'il ne remplace pas. L'interrupteur est `coranTestActif` dans
+> `src/core/coranTestMode.ts`. La clé de préférence stockée reste `tajweedPages` :
+> un réglage enregistré avant le renommage n'est donc pas perdu. Le nom du fichier
+> est conservé pour ne pas rompre les liens vers ces mesures.
 
-Le mode `tajweedPages` — présenté sous le nom **Coran Tajweed** — affiche la page
+Le mode `tajweedPages` — présenté sous le nom **Coran Test** — affiche la page
 du Moushaf telle qu'elle est imprimée. Chaque mot est dessiné par la **police
 couleur QCF V4** de Quran Foundation : la mise en page et les couleurs des règles
 de Tajweed sont donc celles de la page, et l'emplacement des versets suit
 l'édition, sans recomposition.
+
+La **loupe** propose trois tailles : Normale, Grande (1,35×) et Très grande (1,8×).
+Elle agrandit la page entière d'un seul facteur : la lettre reste 0,047910 de la
+largeur de page, donc la colonne garde ses 16,15 em et la place des versets sur la
+page ne bouge pas. Une page agrandie dépasse la vue : le document défile, et le
+cadre CSS est choisi pour que **les deux bords restent atteignables** — voir
+`_inspect/coran-test/eprouver-le-cadre.mjs` et `eprouver-la-loupe.mjs`.
 
 Les deux autres présentations restent distinctes. Le mode `tajweed`, appelé
 **Lecture simplifiée**, est un rendu verset par verset à partir des annotations

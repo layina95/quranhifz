@@ -200,8 +200,15 @@ export function alignementDeLigne(page:number):string{
  * page imprimee (622 x 917) et ses marges, parce que c'est ce qui place les
  * versets : la colonne du livre vaut 16,15 em, et c'est cette proportion-la, et
  * non la largeur de l'ecran, qui decide de la taille de la lettre.
+ *
+ * `zoom` est la seule personnalisation du mode « Coran Test », et elle ne touche
+ * PAS a la composition : elle multiplie la largeur de la page, donc la lettre et
+ * la colonne dans la meme proportion. La colonne reste 16,15 em et la lettre
+ * 0,047910 de la largeur de la page, l'emplacement imprime des versets ne bouge
+ * pas d'un pixel ; a 1 (la proportion du livre) la page tient entiere dans
+ * l'ecran, au-dela elle se laisse defiler au lieu d'etre rognee.
  */
-export function qcfV4Html(data:QcfV4Page,playingVerseId:number|null,difficultyIds:number[],sessionStart:number,sessionEnd:number){
+export function qcfV4Html(data:QcfV4Page,playingVerseId:number|null,difficultyIds:number[],sessionStart:number,sessionEnd:number,zoom=1){
   const font=`https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p${data.page}.woff2`;
   const lines=data.lines.map(line=>{
     const fixe=data.page===1;
@@ -219,9 +226,10 @@ export function qcfV4Html(data:QcfV4Page,playingVerseId:number|null,difficultyId
   }).join('');
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta charset="utf-8"><style>
 @font-face{font-family:qcf;src:url('${font}') format('woff2');font-display:block}
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fffdf7;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-html{display:flex;align-items:center;justify-content:center}
-#page{--page-w:100vw;--page-h:calc(100vw*${PAGE_RATIO.toFixed(4)});width:var(--page-w);height:var(--page-h);padding:calc(var(--page-w)*${MARGE_VERTICALE}) calc(var(--page-w)*${MARGE_LATERALE});display:grid;grid-template-rows:repeat(${data.rowCount},minmax(0,1fr));align-items:center;overflow:visible;--word-size:calc(var(--page-w)*${TAILLE_PAGE.toFixed(6)})}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#fffdf7;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+html{overflow:${zoom>1?'auto':'hidden'}}
+body{overflow:visible}
+#page{margin:0 auto;--page-w:100vw;--page-h:calc(100vw*${PAGE_RATIO.toFixed(4)});width:var(--page-w);height:var(--page-h);padding:calc(var(--page-w)*${MARGE_VERTICALE}) calc(var(--page-w)*${MARGE_LATERALE});display:grid;grid-template-rows:repeat(${data.rowCount},minmax(0,1fr));align-items:center;overflow:visible;--word-size:calc(var(--page-w)*${TAILLE_PAGE.toFixed(6)})}
 .mushaf-row{grid-column:1;min-width:0;min-height:0;max-width:100%;width:100%;align-self:stretch}
 .line{display:flex;align-items:center;white-space:nowrap;direction:rtl;gap:0;font-family:qcf;font-size:var(--word-size);line-height:1.45;overflow:visible;transform-origin:right center}
 .word{display:inline-block;position:relative;border-radius:4px;flex-shrink:0;white-space:nowrap}
@@ -250,12 +258,22 @@ const poseDeLigne=${poseDeLigne.toString()};
 function fitPage(){
   const page=document.getElementById('page'),lines=[...document.querySelectorAll('.line')];
   // 1. La page prend la FORME de la page imprimee (622 x 917), au plus grand qui
-  //    tient dans la vue. Tout le reste en decoule : la taille de la lettre est
-  //    0,047910 fois la largeur de la page, donc la colonne fait toujours 16,15 em,
-  //    comme dans le livre.
-  const largeur=Math.min(innerWidth,innerHeight/${PAGE_RATIO.toFixed(6)});
+  //    tient dans la vue, multiplie par la loupe du lecteur. Tout le reste en
+  //    decoule : la taille de la lettre est 0,047910 fois la largeur de la page,
+  //    donc la colonne fait toujours 16,15 em, comme dans le livre -- la loupe
+  //    n'est pas un changement de composition.
+  const largeur=Math.min(innerWidth,innerHeight/${PAGE_RATIO.toFixed(6)})*${zoom};
   page.style.setProperty('--page-w',largeur+'px');
   page.style.setProperty('--page-h',(largeur*${PAGE_RATIO.toFixed(6)})+'px');
+  // 1bis. Le centrage vertical est CALCULE ici, et non confie a un align-items.
+  //    Mesure faite dans Chrome sur sept cadres CSS (eprouver-le-cadre.mjs) : le
+  //    cadre qui centre par flexbox laisse le bord GAUCHE de la page hors de la
+  //    zone de defilement des qu'elle depasse la vue -- 194 px perdus sur la boite
+  //    d'essai, et en RTL c'est tout le debut de la page qui devient
+  //    inatteignable. Le cadre en bloc, lui, garde tout mais ne centre pas. Une
+  //    marge haute explicite donne les deux : elle centre quand la page tient, et
+  //    vaut 0 sinon -- le haut reste atteignable.
+  page.style.marginTop=Math.max(0,Math.round((innerHeight-largeur*${PAGE_RATIO.toFixed(6)})/2))+'px';
   const colonne=largeur*(1-2*${MARGE_LATERALE});
   // 2. On repart des poses nues : mesurer une ligne deja comprimee donnerait la
   //    largeur d'apres transformation, et deux passages de suite comprimeraient

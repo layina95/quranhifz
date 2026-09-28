@@ -506,3 +506,25 @@ test('la pose ne peut pas dependre d une fin de sourate',()=>{
   assert.equal((html.match(/data-fin/g)||[]).length,0);
   assert.match(html,/data-line="15" style="grid-row:15;/);
 });
+
+// --- La loupe de « Coran Test » -----------------------------------------------
+// Elle ne doit PAS toucher a la composition. La page garde la forme du livre et
+// la lettre reste 0,047910 de sa largeur, donc les versets ne se deplacent pas ;
+// ce qui change, c'est la largeur de la page, donc le defilement. Un controle qui
+// ne verifierait que le facteur laisserait passer une loupe qui rogne la page :
+// c'est le defilement qu'il faut exiger en plus.
+
+test('la loupe agrandit la page sans toucher aux proportions du livre',()=>{
+  const p3=parseQcfV4Page(3,{pagination:{total_pages:1},verses:[{verse_key:'2:6',words:[
+    {position:1,page_number:3,line_number:1,char_type_name:'word',code_v2:'\uFC41',text_qpc_hafs:'x'},
+  ]}]});
+  const nue=qcfV4Html(p3,null,[],0,0);
+  const loupe=qcfV4Html(p3,null,[],0,0,1.8);
+  const lettre=html=>/--word-size:calc\(var\(--page-w\)\*([\d.]+)\)/.exec(html)?.[1];
+  assert.equal(lettre(nue),lettre(loupe),'la loupe ne doit pas changer la lettre en part de la page');
+  assert.equal(lettre(loupe),'0.047910','la lettre garde la proportion mesuree sur le scan');
+  assert.match(nue,/overflow:hidden/,'a la taille du livre, la page tient sans defiler');
+  assert.match(loupe,/overflow:auto/,'agrandie, la page doit se laisser defiler au lieu d’etre rognee');
+  assert.ok(loupe.includes(`innerHeight/${PAGE_RATIO.toFixed(6)})*1.8`),'la largeur de page doit etre multipliee par la loupe');
+  assert.equal(nue,qcfV4Html(p3,null,[],0,0,1),'la loupe par defaut est exactement la proportion du livre');
+});

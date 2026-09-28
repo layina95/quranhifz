@@ -1,13 +1,14 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {Pressable,View} from 'react-native';
 import {WebView,WebViewMessageEvent} from 'react-native-webview';
+import {TailleMushaf,zoomDeTaille} from './core/coranTestMode';
 import {QcfV4Page} from './core/qcfV4';
 import {qcfV4Html} from './core/qcfV4Html';
 import {juzs,pageRange,surahAt} from './core/quran';
 import {loadQcfV4Page} from './services/qcfV4';
 import {colors,Label} from './ui/theme';
 
-type Props={page:number;width:number;height:number;playingVerseId:number|null;difficultyIds:number[];sessionStart:number;sessionEnd:number;onVerseLongPress:(id:number)=>void;onTap:()=>void;onRetourAuMoushaf:()=>void};
+type Props={page:number;width:number;height:number;taille:TailleMushaf;playingVerseId:number|null;difficultyIds:number[];sessionStart:number;sessionEnd:number;onVerseLongPress:(id:number)=>void;onTap:()=>void;onRetourAuMoushaf:()=>void};
 
 /**
  * Le bandeau de tete reprend celui de l'application de reference : le juz' a
@@ -21,13 +22,17 @@ function enteteDePage(firstVerseId:number){
 }
 
 /**
- * Lecture « Coran Tajweed » : la page est dessinee par la police QCF V4, donc
- * mise en page et couleurs de Tajweed sont celles du Moushaf, et le verset
- * recite s'y surligne pendant l'audio. Rien n'est stocke dans l'application :
- * sans reponse du serveur, on l'annonce et on propose une autre presentation
- * plutot que d'afficher une page approximative.
+ * Lecture « Coran Test » : la page est dessinee par la police QCF V4, donc mise
+ * en page et couleurs de Tajweed sont celles du Moushaf, et le verset recite s'y
+ * surligne pendant l'audio. Rien n'est stocke dans l'application : sans reponse
+ * du serveur, on l'annonce et on propose une autre presentation plutot que
+ * d'afficher une page approximative.
+ *
+ * `taille` est la seule personnalisation : elle agrandit la page sans changer
+ * ses proportions, donc l'emplacement imprime des versets reste le meme.
  */
-export function QcfV4MushafPage({page,width,height,playingVerseId,difficultyIds,sessionStart,sessionEnd,onVerseLongPress,onTap,onRetourAuMoushaf}:Props){
+export function QcfV4MushafPage({page,width,height,taille,playingVerseId,difficultyIds,sessionStart,sessionEnd,onVerseLongPress,onTap,onRetourAuMoushaf}:Props){
+  const zoom=zoomDeTaille(taille);
   const [data,setData]=useState<QcfV4Page|null>(null);
   const [error,setError]=useState<string|null>(null);
   const [fontReady,setFontReady]=useState(false);
@@ -54,8 +59,8 @@ export function QcfV4MushafPage({page,width,height,playingVerseId,difficultyIds,
   useEffect(()=>{
     if(data&&fontReady)web.current?.injectJavaScript(`setPlaying(${playingVerseId??'null'});true;`);
   },[data,fontReady,playingVerseId]);
-  const html=useMemo(()=>data?qcfV4Html(data,playingVerseId,difficultyIds,sessionStart,sessionEnd):'',
-    [data,difficultyIds.join(','),sessionStart,sessionEnd]);
+  const html=useMemo(()=>data?qcfV4Html(data,playingVerseId,difficultyIds,sessionStart,sessionEnd,zoom):'',
+    [data,difficultyIds.join(','),sessionStart,sessionEnd,zoom]);
   const onMessage=(event:WebViewMessageEvent)=>{
     try{
       const message=JSON.parse(event.nativeEvent.data);
@@ -70,7 +75,7 @@ export function QcfV4MushafPage({page,width,height,playingVerseId,difficultyIds,
     }catch{/* Ignore messages unrelated to the reader. */}
   };
   if(!data||error)return <View style={{width,minHeight:height,backgroundColor:colors.paper,borderWidth:2,borderColor:colors.beige,borderRadius:9,padding:22,alignItems:'center',justifyContent:'center'}}>
-    <Label style={{fontWeight:'700'}}>Coran Tajweed</Label>
+    <Label style={{fontWeight:'700'}}>Coran Test</Label>
     <Label style={{color:colors.muted,fontSize:13,textAlign:'center',marginTop:9}}>{error??'Chargement de la page…'}</Label>
     <Label style={{color:colors.muted,fontSize:12,textAlign:'center',marginTop:9}}>Cette lecture dessine la page avec la police officielle, demandée page par page : elle a besoin d’une connexion.</Label>
     <Pressable accessibilityLabel="Choisir une autre présentation" onPress={onRetourAuMoushaf} style={{marginTop:16,paddingVertical:11,paddingHorizontal:16,borderRadius:14,backgroundColor:colors.soft,borderWidth:1,borderColor:colors.softBorder}}><Label style={{color:colors.green,fontWeight:'700',fontSize:14}}>Choisir une autre présentation</Label></Pressable>
@@ -84,6 +89,6 @@ export function QcfV4MushafPage({page,width,height,playingVerseId,difficultyIds,
         <Label style={{fontSize:16,color:colors.text}}>{entete.arabe}</Label>
       </View>
     </View>
-    <NativeWebView ref={web} source={{html,baseUrl:'https://verses.quran.foundation'}} originWhitelist={['https://*']} scrollEnabled={false} javaScriptEnabled onMessage={onMessage} onError={()=>setError('Le Coran Tajweed ne s’est pas chargé.')} style={{flex:1,backgroundColor:colors.paper}} />
+    <NativeWebView ref={web} source={{html,baseUrl:'https://verses.quran.foundation'}} originWhitelist={['https://*']} scrollEnabled={zoom>1} javaScriptEnabled onMessage={onMessage} onError={()=>setError('Le Coran Test ne s’est pas chargé.')} style={{flex:1,backgroundColor:colors.paper}} />
   </View>;
 }
